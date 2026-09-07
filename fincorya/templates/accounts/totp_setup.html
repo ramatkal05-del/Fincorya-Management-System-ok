@@ -1,0 +1,12 @@
+{% extends "accounts/auth_base.html" %}{% load form_accessibility %}
+{% block title %}Activer la sécurité — FINCORYA{% endblock %}
+{% block auth_content %}
+<p class="eyebrow">Protection obligatoire</p><h2>Activez la double authentification</h2>
+<p class="muted">Scannez ce QR code avec votre application, puis saisissez le code généré.</p>
+<div class="qr-wrap qr-activation"><span>QR d’activation sécurisé</span><img src="data:image/png;base64,{{ qr_data }}" alt="QR code de configuration TOTP FINCORYA" width="184" height="184"></div>
+<details><summary>Impossible de scanner ?</summary><p class="secret-code">{{ secret }}</p></details>
+<form method="post" class="form-stack" data-auth-form novalidate>{% csrf_token %}
+  <div class="field"><label for="{{ form.token.id_for_label }}">Code à 6 chiffres</label>{{ form.token|accessible_widget }}{% if form.token.errors %}<span id="{{ form.token.auto_id }}_errors" class="field-error" role="alert">{{ form.token.errors.0 }}</span>{% endif %}</div>
+  <button class="button button-primary" type="submit"><span class="button-label">Activer et continuer</span><span class="login-spinner" aria-hidden="true"></span></button>
+</form>
+{% endblock %}

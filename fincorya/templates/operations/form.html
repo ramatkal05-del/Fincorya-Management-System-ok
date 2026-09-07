@@ -1,0 +1,13 @@
+{% extends "app_base.html" %}{% load form_accessibility %}
+{% block title %}Nouvelle opération — FINCORYA{% endblock %}
+{% block context_name %}Nouvelle opération{% endblock %}
+{% block module_content %}
+<header class="module-page-header"><div><p class="eyebrow">Saisie simplifiée</p><h1>Transfert ou retrait</h1><p class="muted">Choisissez l'opération et saisissez le montant. FINCORYA sélectionne automatiquement le tarif officiel.</p></div><a class="button button-secondary" href="{% url 'operations:list' %}">Annuler</a></header>
+<div class="workflow-grid"><form method="post" class="panel financial-form" novalidate hx-indicator="#submit-indicator">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors.0 }}</div>{% endif %}
+  {{ form.idempotency_key }}{{ form.tariff_schedule }}
+  {% for field in form.visible_fields %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span><span class="sr-only">, obligatoire</span>{% endif %}</label>{{ field|accessible_widget }}{% if field.help_text %}<small id="{{ field.auto_id }}_help">{{ field.help_text }}</small>{% endif %}{% if field.errors %}<span id="{{ field.auto_id }}_errors" class="field-error" role="alert">{{ field.errors.0 }}</span>{% endif %}</div>{% endfor %}
+  <button class="button button-primary" type="submit">Enregistrer l'opération</button><span id="submit-indicator" class="htmx-indicator" role="status">Traitement sécurisé…</span>
+</form>
+<aside class="panel impact-panel"><p class="eyebrow">Tarif automatique</p><h2>Résumé de l'opération</h2><div id="operation-preview" hx-get="{% url 'operations:preview' %}" hx-include=".financial-form" hx-trigger="change from:.financial-form, input changed delay:350ms from:#id_amount"><p class="muted">Sélectionnez une caisse et saisissez le montant : les frais apparaîtront automatiquement.</p></div><div class="tariff-assurance"><strong>Grille officielle FINCORYA</strong><span>Calcul sécurisé en USD selon la tranche du montant.</span></div></aside></div>
+{% endblock %}

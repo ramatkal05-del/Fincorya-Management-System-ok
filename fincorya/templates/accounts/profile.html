@@ -1,0 +1,20 @@
+{% extends "app_base.html" %}{% load form_accessibility %}
+{% block title %}Mon profil — FINCORYA{% endblock %}
+{% block context_name %}Mon profil{% endblock %}
+{% block module_content %}
+<header class="module-page-header"><div><p class="eyebrow">Compte personnel</p><h1>Mon profil</h1><p class="muted">Mettez à jour vos coordonnées et la photo utilisée dans votre espace FINCORYA.</p></div><a class="button button-secondary" href="{% url 'accounts:password_change' %}">Modifier mon mot de passe</a></header>
+<div class="profile-settings-grid">
+  <aside class="panel profile-summary" aria-label="Résumé du profil">
+    {% if request.user.photo %}<img class="profile-avatar-large" src="{% url 'accounts:profile_photo' request.user.pk %}" alt="Photo actuelle de {{ request.user.get_full_name|default:request.user.email }}" width="112" height="112">{% else %}<span class="profile-avatar-large profile-avatar-fallback" aria-hidden="true">{{ request.user.email|first|upper }}</span>{% endif %}
+    <div><h2>{{ request.user.get_full_name|default:request.user.email }}</h2><p>{{ request.user.get_role_display }}</p><span class="status-badge status-completed">Compte actif</span></div>
+  </aside>
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Informations personnelles</p><h2>Coordonnées du compte</h2></div></div>
+    <form method="post" enctype="multipart/form-data" class="financial-form profile-form" novalidate>{% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors.0 }}</div>{% endif %}
+      {% for field in form %}<div class="field {% if field.name == 'photo' %}profile-photo-field{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}{% if field.help_text %}<small id="{{ field.auto_id }}_help">{{ field.help_text }}</small>{% endif %}{% if field.errors %}<span id="{{ field.auto_id }}_errors" class="field-error" role="alert">{{ field.errors.0 }}</span>{% endif %}</div>{% endfor %}
+      <div class="profile-form-actions"><button class="button button-primary" type="submit">Enregistrer les modifications</button><a class="button button-secondary" href="{% url 'dashboard' %}">Annuler</a></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

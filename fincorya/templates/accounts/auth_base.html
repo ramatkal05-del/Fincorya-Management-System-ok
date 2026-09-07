@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load static %}
+{% block body_class %}auth-page{% endblock %}
+{% block body %}
+<main id="contenu" class="auth-shell auth-fullscreen">
+  <div class="auth-ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+  <section class="auth-panel auth-split" aria-label="Authentification FINCORYA">
+    <div class="auth-brand-side">
+      <div class="auth-brand-identity">
+        <a class="auth-floating-logo" href="{% url 'accounts:login' %}" aria-label="FINCORYA Group — Accueil de connexion"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}" alt="FINCORYA Group"><span class="mobile-brand-mark" aria-hidden="true">F</span><span class="mobile-brand-wordmark" aria-hidden="true">FINCORYA GROUP</span></a>
+      </div>
+      <div class="auth-brand-copy"><span>Plateforme sécurisée — Système de Gestion Interne</span><h1>Pilotez vos opérations en toute confiance.</h1><p>Un espace interne sécurisé pour vos caisses, opérations et rapports financiers.</p></div>
+    </div>
+    <div class="auth-form-side">
+      <div class="auth-card">
+        <div class="auth-security-mark" aria-label="Connexion sécurisée">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.8 3 8.8 7 10 4-1.2 7-5.2 7-10V6l-7-3Zm-3 9 2 2 4-4"/></svg>
+          <span>{% if mfa_enabled %}Accès protégé par MFA{% else %}Accès sécurisé FINCORYA{% endif %}</span>
+        </div>
+        {% block auth_content %}{% endblock %}
+      </div>
+      <footer class="auth-footer">© FINCORYA Group · Votre avenir financier, notre engagement.</footer>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "app_base.html" %}
+{% block title %}Opérations — FINCORYA{% endblock %}
+{% block context_name %}Opérations{% endblock %}
+{% block module_content %}
+<header class="module-page-header"><div><p class="eyebrow">Registre financier</p><h1>Opérations</h1><p class="muted">Consultez les transferts et retraits auxquels vous êtes autorisé.</p></div>{% if request.user.role == 'AGENT' or request.user.role == 'ADMIN' %}<a class="button button-primary" href="{% url 'operations:create' %}">+ Nouvelle opération</a>{% endif %}</header>
+<div class="module-stat-strip"><article><span>Résultats</span><strong>{{ page.paginator.count }}</strong></article><article><span>Page actuelle</span><strong>{{ page.number }} / {{ page.paginator.num_pages }}</strong></article><article><span>Contrôle</span><strong>Temps réel</strong></article></div>
+<form class="filter-bar" method="get" hx-get="{% url 'operations:list' %}" hx-target="#operation-table" hx-push-url="true" hx-trigger="input changed delay:350ms, change">
+  <div class="field"><label for="{{ filter_form.q.id_for_label }}">Recherche</label>{{ filter_form.q }}</div>
+  <div class="field"><label for="{{ filter_form.type.id_for_label }}">Type</label>{{ filter_form.type }}</div>
+  <div class="field"><label for="{{ filter_form.service.id_for_label }}">Service</label>{{ filter_form.service }}</div>
+  <div class="field"><label for="{{ filter_form.status.id_for_label }}">Statut</label>{{ filter_form.status }}</div>
+  <span class="htmx-indicator" aria-live="polite">Chargement…</span>
+</form>
+<section id="operation-table" class="panel">{% include "operations/_table.html" %}</section>
+{% endblock %}

@@ -1,0 +1,99 @@
+databases:
+  - name: fincorya-db
+    databaseName: fincorya
+    user: fincorya
+services:
+  - type: web
+    name: fincorya-web
+    runtime: python
+    rootDir: fincorya
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    preDeployCommand: python manage.py migrate
+    startCommand: gunicorn config.wsgi:application --workers 2 --timeout 120 --access-logfile - --error-logfile -
+    healthCheckPath: /health/
+    disk:
+      name: fincorya-private-files
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ENVIRONMENT
+        value: production
+      - key: MFA_ENABLED
+        value: "True"
+      - key: LOCAL_AUTH_BYPASS
+        value: "False"
+      - key: TRUST_PROXY_HEADERS
+        value: "True"
+      - key: MEDIA_ROOT
+        value: /var/data/media
+      - key: REPORT_FONT_DIR
+        sync: false
+      - key: REPORT_RETENTION_DAYS
+        value: "365"
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: DB_NAME
+        fromDatabase: {name: fincorya-db, property: database}
+      - key: DB_USER
+        fromDatabase: {name: fincorya-db, property: user}
+      - key: DB_PASSWORD
+        fromDatabase: {name: fincorya-db, property: password}
+      - key: DB_HOST
+        fromDatabase: {name: fincorya-db, property: host}
+      - key: DB_PORT
+        fromDatabase: {name: fincorya-db, property: port}
+  - type: worker
+    name: fincorya-notification-worker
+    runtime: python
+    rootDir: fincorya
+    buildCommand: pip install -r requirements.txt
+    startCommand: python manage.py notification_worker
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: "False"
+      - key: ENVIRONMENT
+        value: production
+      - key: MFA_ENABLED
+        value: "True"
+      - key: LOCAL_AUTH_BYPASS
+        value: "False"
+      - key: TRUST_PROXY_HEADERS
+        value: "True"
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: DB_NAME
+        fromDatabase: {name: fincorya-db, property: database}
+      - key: DB_USER
+        fromDatabase: {name: fincorya-db, property: user}
+      - key: DB_PASSWORD
+        fromDatabase: {name: fincorya-db, property: password}
+      - key: DB_HOST
+        fromDatabase: {name: fincorya-db, property: host}
+      - key: DB_PORT
+        fromDatabase: {name: fincorya-db, property: port}

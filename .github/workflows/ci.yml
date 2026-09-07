@@ -1,0 +1,31 @@
+name: FINCORYA quality gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  django:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fincorya
+    env:
+      DEBUG: "True"
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-for-production
+      MFA_ENABLED: "True"
+      LOCAL_AUTH_BYPASS: "False"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: fincorya/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test

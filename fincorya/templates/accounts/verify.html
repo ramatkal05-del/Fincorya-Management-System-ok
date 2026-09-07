@@ -1,0 +1,28 @@
+{% extends "accounts/auth_base.html" %}{% load form_accessibility %}
+{% block title %}Vérification — FINCORYA{% endblock %}
+{% block auth_content %}
+<p class="eyebrow">Deuxième étape</p><h2>Vérifiez votre identité</h2>
+<p class="muted">Choisissez votre méthode de vérification sécurisée.</p>
+{% for message in messages %}<p class="login-state login-state-{{ message.tags }}" {% if message.tags == 'error' %}role="alert"{% else %}role="status"{% endif %}>{{ message }}</p>{% endfor %}
+<nav class="mfa-methods" aria-label="Méthode de vérification">
+  <a href="{% url 'accounts:verify' %}?method=totp" class="mfa-method {% if method == 'totp' %}is-active{% endif %}" {% if method == 'totp' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 6h4M11 18h2"/></svg><span><strong>Application</strong><small>QR + code TOTP</small></span></a>
+  <a href="{% url 'accounts:verify' %}?method=email" class="mfa-method {% if method == 'email' %}is-active{% endif %}" {% if method == 'email' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><span><strong>E-mail</strong><small>Code temporaire</small></span></a>
+  <a href="{% url 'accounts:verify' %}?method=recovery" class="mfa-method {% if method == 'recovery' %}is-active{% endif %}" {% if method == 'recovery' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7a4 4 0 1 0-3.5 4L14 13.5V16h2v2h3v-4.5l-4-4"/></svg><span><strong>Récupération</strong><small>Dernier recours</small></span></a>
+</nav>
+{% if method == 'email' %}
+  <p class="mfa-instruction">Recevez un code à 6 chiffres sur <strong>{{ masked_email }}</strong>.</p>
+  <form method="post" action="{% url 'accounts:send_email_otp' %}" class="email-code-request" hx-boost="true">{% csrf_token %}<button class="button button-secondary" type="submit">{% if email_code_active %}Renvoyer le code{% else %}Recevoir un code par e-mail{% endif %}</button></form>
+{% elif method == 'recovery' %}
+  <p class="mfa-instruction">Utilisez l’un des codes uniques remis lors de l’activation MFA.</p>
+{% else %}
+  <p class="mfa-instruction">Saisissez le code actuel de votre application d’authentification.</p>
+  <div class="totp-qr-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2v2M14 19h2v2M19 19h2v2"/></svg><p><strong>QR d’activation</strong><span>Le QR sécurisé est présenté lors de la première activation. Ensuite, l’application génère un code à 6 chiffres toutes les 30 secondes.</span></p></div>
+{% endif %}
+{% if method != 'email' or email_code_active %}
+<form method="post" class="form-stack mfa-code-form" data-auth-form novalidate>{% csrf_token %}<input type="hidden" name="method" value="{{ method }}">
+  <div class="field"><label for="{{ form.token.id_for_label }}">{% if method == 'email' %}Code reçu par e-mail{% elif method == 'recovery' %}Code de récupération{% else %}Code de l’application{% endif %}</label>{{ form.token|accessible_widget }}{% if form.token.errors %}<span id="{{ form.token.auto_id }}_errors" class="field-error" role="alert">{{ form.token.errors.0 }}</span>{% endif %}</div>
+  <button class="button button-primary" type="submit"><span class="button-label">Vérifier et continuer</span><span class="login-spinner" aria-hidden="true"></span></button>
+</form>
+{% endif %}
+<a class="text-link auth-back-link" href="{% url 'accounts:login' %}">← Revenir à la connexion</a>
+{% endblock %}

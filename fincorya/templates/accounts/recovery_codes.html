@@ -1,0 +1,8 @@
+{% extends "accounts/auth_base.html" %}
+{% block title %}Codes de récupération — FINCORYA{% endblock %}
+{% block auth_content %}
+<p class="eyebrow">Dernière étape</p><h2>Conservez vos codes de récupération</h2>
+<div class="alert alert-warning" role="status">Chaque code ne peut être utilisé qu'une seule fois. Enregistrez-les maintenant.</div>
+<ul class="recovery-grid">{% for code in codes %}<li>{{ code }}</li>{% endfor %}</ul>
+<a class="button button-primary" href="{% url 'dashboard' %}">J'ai enregistré mes codes</a>
+{% endblock %}
