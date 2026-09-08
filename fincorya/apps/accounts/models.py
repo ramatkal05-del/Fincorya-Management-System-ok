@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy as _
 
 class Role(models.TextChoices):
     ADMIN = "ADMIN", _("Administrateur")
+    FINANCE_MANAGER = "FINANCE_MANAGER", _("Chargé des finances")
     AGENT = "AGENT", _("Agent")
     PARTNER = "PARTNER", _("Partenaire")
     INVESTOR = "INVESTOR", _("Investisseur")

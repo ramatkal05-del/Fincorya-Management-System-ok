@@ -1,10 +1,12 @@
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+
+
+from apps.finance.locking import ledger_atomic
 from apps.accounts.models import Role
 from apps.audit.services import record
 from .models import ApprovalDecision, ApprovalLevel, Expense, ExpenseApproval, ExpenseStatus
 
-@transaction.atomic
+@ledger_atomic
 def decide_expense(*, expense_id, actor, decision, comment=""):
     expense = Expense.objects.select_for_update().get(pk=expense_id)
     if actor.role != Role.ADMIN:
@@ -21,4 +23,7 @@ def decide_expense(*, expense_id, actor, decision, comment=""):
         expense.status = ExpenseStatus.APPROVED
     expense.save(update_fields=["status"])
     record(actor=actor, action="EXPENSE_DECIDE", instance=expense, after={"level": level, "decision": decision})
+    if expense.status == ExpenseStatus.APPROVED:
+        from apps.finance.events import recognize_expense
+        recognize_expense(expense, actor)
     return approval

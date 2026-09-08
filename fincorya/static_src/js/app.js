@@ -10,37 +10,50 @@
     message.textContent = text;
     loginStatus.appendChild(message);
   };
-  document.addEventListener("submit", (event) => {
-    const authForm = event.target.closest?.("[data-auth-form]");
-    if (!authForm) return;
-    authForm.classList.add("is-loading");
-    authForm.querySelector("button[type='submit']")?.setAttribute("aria-busy", "true");
-  });
-  if (document.querySelector("[data-login-form]")) {
-    document.addEventListener("submit", (event) => {
-      const loginForm = event.target.closest?.("[data-login-form]");
-      if (!loginForm) return;
-      loginForm.classList.add("is-loading");
-      loginForm.querySelector("button[type='submit']")?.setAttribute("aria-busy", "true");
-      setLoginStatus("Connexion sécurisée en cours…");
-    });
-    document.body.addEventListener("htmx:beforeSwap", (event) => {
-      if (!event.detail.requestConfig?.elt?.matches?.("[data-login-form]")) return;
-      const destination = event.detail.xhr?.responseURL || "";
-      if (destination && !destination.includes("/auth/login/")) {
-        setLoginStatus("Identifiants validés. Redirection sécurisée…", "success");
-      }
-    });
-    for (const eventName of ["htmx:responseError", "htmx:sendError", "htmx:timeout"]) {
-      document.body.addEventListener(eventName, (event) => {
-        if (!event.detail.requestConfig?.elt?.matches?.("[data-login-form]")) return;
-        const loginForm = document.querySelector("[data-login-form]");
-        loginForm?.classList.remove("is-loading");
-        loginForm?.querySelector("button[type='submit']")?.removeAttribute("aria-busy");
-        setLoginStatus("La connexion n’a pas pu aboutir. Vérifiez votre réseau et réessayez.", "error");
-      });
+
+  const isHtmxForm = (form) => form.hasAttribute("hx-boost") || form.hasAttribute("hx-get") || form.hasAttribute("hx-post");
+  const setBusy = (form, busy) => {
+    form.classList.toggle("is-loading", busy);
+    for (const button of form.querySelectorAll("button[type='submit']")) {
+      if (busy) button.setAttribute("aria-busy", "true"); else button.removeAttribute("aria-busy");
+      if (!isHtmxForm(form)) button.disabled = busy;
     }
-  }
+  };
+
+  // Prevent double submission: native forms disable their submit buttons after the
+  // submit event is dispatched (values of the clicked button are already captured).
+  // htmx forms rely on hx-disabled-elt / hx-sync and are only marked as loading.
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+    if (form.hasAttribute("hx-get")) return;
+    setBusy(form, true);
+    if (form.matches("[data-login-form]")) setLoginStatus("Connexion sécurisée en cours…");
+  });
+  // Restore forms when the page is served from the back/forward cache.
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    for (const form of document.querySelectorAll("form.is-loading")) setBusy(form, false);
+  });
+
+  document.body.addEventListener("htmx:beforeSwap", (event) => {
+    const form = event.detail.elt?.closest?.("[data-login-form]");
+    if (!form) return;
+    const destination = event.detail.xhr?.responseURL || "";
+    if (destination && !destination.includes("/auth/login/")) setLoginStatus("Identifiants validés. Redirection sécurisée…", "success");
+  });
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const form = event.detail.elt?.closest?.("form");
+    if (!form || event.detail.successful) return;
+    setBusy(form, false);
+    if (form.matches("[data-login-form]")) setLoginStatus("La connexion n’a pas pu aboutir. Vérifiez votre réseau et réessayez.", "error");
+  });
+  document.body.addEventListener("htmx:sendError", (event) => {
+    const form = event.detail.elt?.closest?.("form");
+    if (!form) return;
+    setBusy(form, false);
+    if (form.matches("[data-login-form]")) setLoginStatus("La connexion n’a pas pu aboutir. Vérifiez votre réseau et réessayez.", "error");
+  });
 
   document.addEventListener("click", (event) => {
     const toggle = event.target.closest?.("[data-password-toggle]");
@@ -58,6 +71,22 @@
     if (closedEye) closedEye.hidden = !willReveal;
   });
 
+  // Responsive tables: copy column headings onto cells so the stacked mobile
+  // layout can label every value with the real header text.
+  const labelTables = (root = document) => {
+    for (const table of root.querySelectorAll(".table-wrap table")) {
+      const headers = Array.from(table.querySelectorAll("thead th"), (th) => th.textContent.trim());
+      if (!headers.length) continue;
+      for (const row of table.querySelectorAll("tbody tr")) {
+        Array.from(row.children).forEach((cell, index) => {
+          if (headers[index]) cell.setAttribute("data-label", headers[index]);
+        });
+      }
+    }
+  };
+  labelTables();
+  document.body.addEventListener("htmx:afterSwap", (event) => labelTables(event.detail.target ?? document));
+
   const workspace = document.querySelector("[data-workspace]");
   if (!workspace) return;
 
@@ -68,12 +97,17 @@
   const profileButton = workspace.querySelector("[data-profile-toggle]");
   const profileDropdown = workspace.querySelector("[data-profile-dropdown]");
 
-  const isMobile = () => window.matchMedia("(max-width: 820px)").matches;
+  const mobileQuery = window.matchMedia("(max-width: 820px)");
+  const isMobile = () => mobileQuery.matches;
   const setNavigation = (open, restoreFocus = false) => {
     sidebar?.classList.toggle("is-open", open);
     if (backdrop) backdrop.hidden = !open;
     openButton?.setAttribute("aria-expanded", String(open));
-    sidebar?.setAttribute("aria-hidden", String(isMobile() && !open));
+    if (sidebar) {
+      const hidden = isMobile() && !open;
+      sidebar.inert = hidden;
+      if (hidden) sidebar.setAttribute("aria-hidden", "true"); else sidebar.removeAttribute("aria-hidden");
+    }
     document.body.classList.toggle("nav-open", open && isMobile());
     if (open) sidebar?.querySelector("a")?.focus();
     if (!open && restoreFocus) openButton?.focus();
@@ -99,13 +133,6 @@
     if (sidebar?.classList.contains("is-open")) setNavigation(false, true);
     else if (profileDropdown && !profileDropdown.hidden) setProfile(false, true);
   });
-  window.addEventListener("resize", () => setNavigation(false));
+  mobileQuery.addEventListener("change", () => setNavigation(false));
   setNavigation(false);
-
-  document.addEventListener("submit", (event) => {
-    const button = event.target.querySelector("button[type='submit']");
-    if (!button || button.disabled) return;
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
-  });
 })();

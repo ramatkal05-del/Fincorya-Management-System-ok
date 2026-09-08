@@ -23,6 +23,9 @@ class ExpenseCategory(models.TextChoices):
     OTHER = "OTHER", _("Autre")
 
 class Expense(models.Model):
+    stakeholder = models.ForeignKey(blank=True, null=True, on_delete=models.RESTRICT, to='stakeholders.stakeholder')
+    recognition_batch = models.OneToOneField(blank=True, null=True, on_delete=models.RESTRICT, related_name='recognized_expense', to='finance.journalbatch')
+    accrual_key = models.CharField(blank=True, editable=False, max_length=120, null=True, unique=True)
     reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     label = models.CharField(max_length=180)
     category = models.CharField(max_length=16, choices=ExpenseCategory.choices, default=ExpenseCategory.GENERAL)
@@ -55,3 +58,9 @@ class ExpenseApproval(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["expense", "level"], name="one_expense_decision_per_level")]
+
+class ExpensePayment(models.Model):
+    amount = models.DecimalField(decimal_places=2, max_digits=18)
+    paid_at = models.DateTimeField()
+    batch = models.OneToOneField(on_delete=models.RESTRICT, to='finance.journalbatch')
+    expense = models.ForeignKey(on_delete=models.RESTRICT, related_name='payments', to='expenses.expense')

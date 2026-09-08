@@ -17,7 +17,7 @@ complet : allocation administrateur → opération agent → rapport → bénéf
 L'interface applique le système visuel institutionnel FINCORYA : émeraude,
 vert profond, ivoire, graphite et or utilisé avec retenue. Le logo officiel
 est servi sans modification depuis `static_src/img/fincorya-group-logo-fr.svg`.
-Les écrans utilisent Plus Jakarta Sans, des composants responsives, des icônes
+Les écrans utilisent Inter (servie localement) pour le texte, Space Grotesk pour les titres, des composants responsives, des icônes
 linéaires cohérentes, des états accessibles et une navigation adaptée au rôle.
 
 ## Domaines FINCORYA
@@ -129,3 +129,18 @@ avant une clôture comptable ; la commande échoue si un solde ne correspond pas
 Avant chaque livraison, exécutez `python manage.py check --deploy`,
 `python manage.py makemigrations --check --dry-run` et `python manage.py test`.
 Le workflow CI du dépôt automatise ces contrôles sur chaque push et pull request.
+
+## Registre financier
+
+Le module `/finance/` est accessible aux administrateurs et aux chargés des
+finances depuis la navigation. Il couvre les comptes, écritures, règles datées,
+imports, clôtures, charges et distributions. Les paiements sont distincts de
+la reconnaissance des charges et des dettes.
+
+La base locale utilise PostgreSQL. Les instructions de démarrage, de contrôle
+et de bascule comptable sont dans [docs/finance-postgresql.md](docs/finance-postgresql.md).
+`FINANCE_LEDGER_ENABLED` reste désactivé par défaut ; une bascule demande
+une simulation réconciliée et la validation explicite des données historiques.
+Après bascule, les opérations, allocations, apports, remises et charges approuvées
+alimentent le registre dans la même transaction. Une opération terminée se
+corrige par annulation et remplacement afin de conserver ses écritures.

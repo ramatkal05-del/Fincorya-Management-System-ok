@@ -1,0 +1,3 @@
+{% extends "admin/base_site.html" %}
+{% block content %}<p>Choisissez le type du dossier. Les comptes de connexion des agents et des autres utilisateurs se créent dans <a href="{% url 'accounts:manage' %}">Comptes utilisateurs</a>.</p>
+<div class="module"><h2>Type de partie prenante</h2><ul>{% for value,label in party_types %}<li><a class="button" href="?type={{ value }}">{{ label }}</a></li>{% endfor %}</ul></div>{% endblock %}

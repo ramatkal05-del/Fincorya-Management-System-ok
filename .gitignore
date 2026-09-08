@@ -10,3 +10,8 @@ static/
 .coverage
 htmlcov/
 
+
+# Private local databases, exports, and setup credentials
+fincorya/tmp/
+fincorya/.local/
+fincorya/output/

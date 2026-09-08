@@ -1,0 +1,10 @@
+{% extends "app_base.html" %}{% load form_accessibility %}
+{% block title %}Créer un compte {{ role_label }} — FINCORYA{% endblock %}
+{% block context_name %}Création de compte{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">Administration · {{ role_label }}</p><h1>Créer un compte {{ role_label|lower }}</h1><p>Renseignez l’identité et les identifiants de connexion de cette personne.</p></div><a class="button button-secondary" href="{% url 'accounts:manage' %}">Annuler</a></header>
+<form method="post" class="panel financial-form managed-account-form" novalidate>{% csrf_token %}
+{% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors.0 }}</div>{% endif %}
+{% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<span aria-hidden="true"> *</span><span class="sr-only">, obligatoire</span>{% endif %}</label>{{ field|accessible_widget }}{% if field.help_text %}<small id="{{ field.auto_id }}_help">{{ field.help_text|safe }}</small>{% endif %}{% if field.errors %}<span id="{{ field.auto_id }}_errors" class="field-error" role="alert">{{ field.errors.0 }}</span>{% endif %}</div>{% endfor %}
+<div class="button-row"><button class="button button-primary" type="submit">Créer le compte {{ role_label|lower }}</button><a class="button button-secondary" href="{% url 'accounts:manage' %}">Annuler</a></div>
+</form>{% endblock %}

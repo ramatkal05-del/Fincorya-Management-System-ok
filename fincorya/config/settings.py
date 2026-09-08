@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.pricing",
     "apps.cash",
+    "apps.finance",
     "apps.operations",
     "apps.audit",
     "apps.stakeholders",
@@ -171,3 +172,5 @@ if ENVIRONMENT == "production":
     SECURE_REFERRER_POLICY = "same-origin"
     X_FRAME_OPTIONS = "DENY"
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+FINANCE_LEDGER_ENABLED = env("FINANCE_LEDGER_ENABLED", default=False, cast=as_bool)

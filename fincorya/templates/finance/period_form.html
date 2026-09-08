@@ -1,0 +1,10 @@
+{% extends "app_base.html" %}
+{% block title %}Nouvelle période — FINCORYA{% endblock %}
+{% block context_name %}Nouvelle période financière{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">Calendrier métier</p><h1>Nouvelle période</h1><p>Les bornes sont explicites et interprétées dans le fuseau Europe/Istanbul.</p></div></header>
+<section class="panel"><form method="post" class="form-stack finance-form" novalidate>{% csrf_token %}
+{% include "_form_fields.html" with form=form %}
+<div class="button-row"><a class="button button-secondary" href="{% url 'finance:overview' %}">Annuler</a><button class="button button-primary" type="submit">Créer la période</button></div>
+</form></section>
+{% endblock %}

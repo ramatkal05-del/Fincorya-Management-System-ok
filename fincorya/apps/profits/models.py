@@ -8,8 +8,13 @@ class ProfitStatus(models.TextChoices):
 class DistributionStatus(models.TextChoices):
     DUE = "DUE", _("Due")
     PAID = "PAID", _("Payée")
+    REINVESTED = "REINVESTED", _("Réinvestie dans le capital")
 
 class ProfitPeriod(models.Model):
+    proposed_by = models.ForeignKey(blank=True, null=True, on_delete=models.RESTRICT, related_name='distribution_proposals', to="accounts.User")
+    proposed_at = models.DateTimeField(blank=True, null=True)
+    proposed_distribution = models.DecimalField(decimal_places=2, default=0, max_digits=18)
+    finance_period = models.ForeignKey(blank=True, null=True, on_delete=models.RESTRICT, to='finance.financialperiod')
     start_date = models.DateField()
     end_date = models.DateField()
     currency = models.ForeignKey("pricing.Currency", on_delete=models.RESTRICT)
@@ -37,8 +42,10 @@ class Allocation(models.Model):
         constraints = [models.UniqueConstraint(fields=["period", "bucket"], name="unique_period_bucket")]
 
 class Distribution(models.Model):
+    payment_batch = models.OneToOneField(blank=True, null=True, on_delete=models.RESTRICT, related_name='paid_distribution', to='finance.journalbatch')
+    approval_batch = models.OneToOneField(blank=True, null=True, on_delete=models.RESTRICT, related_name='approved_distribution', to='finance.journalbatch')
     allocation = models.ForeignKey(Allocation, on_delete=models.RESTRICT, related_name="distributions")
     stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="distributions")
     amount = models.DecimalField(max_digits=18, decimal_places=2)
-    status = models.CharField(max_length=8, choices=DistributionStatus.choices, default=DistributionStatus.DUE)
+    status = models.CharField(max_length=10, choices=DistributionStatus.choices, default=DistributionStatus.DUE)
     paid_at = models.DateTimeField(null=True, blank=True)

@@ -6,6 +6,7 @@ class StakeholderType(models.TextChoices):
     PARTNER = "PARTNER", _("Partenaire")
     INVESTOR = "INVESTOR", _("Investisseur")
     SHAREHOLDER = "SHAREHOLDER", _("Actionnaire")
+    STAFF = "STAFF", _("Personnel")
 
 
 class PaymentFrequency(models.TextChoices):
@@ -16,6 +17,12 @@ class PaymentFrequency(models.TextChoices):
     AT_MATURITY = "AT_MATURITY", _("À l'échéance")
 
 class Stakeholder(models.Model):
+    canonical_identity = models.CharField(blank=True, editable=False, max_length=80, null=True, unique=True)
+    started_on = models.DateField(blank=True, null=True)
+    phone = models.CharField(blank=True, max_length=30)
+    notes = models.TextField(blank=True)
+    ended_on = models.DateField(blank=True, null=True)
+    address = models.TextField(blank=True)
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     name = models.CharField(max_length=180)
     type = models.CharField(max_length=12, choices=StakeholderType.choices)
@@ -39,6 +46,17 @@ class Stakeholder(models.Model):
             models.CheckConstraint(condition=models.Q(dividend_percent__gte=0, dividend_percent__lte=100), name="stakeholder_dividend_valid"),
             models.CheckConstraint(condition=models.Q(partner_share_percent__gte=0, partner_share_percent__lte=100), name="stakeholder_partner_share_valid"),
         ]
+
+    def save(self, *args, **kwargs):
+        from django.core.exceptions import ValidationError
+        if ' '.join(self.name.split()).casefold() in {'jenovic mpoto', 'mpoto jenovic'}:
+            self.name = 'Mpoto Jenovic'
+            self.canonical_identity = 'mpoto-jenovic'
+            if type(self).objects.filter(canonical_identity=self.canonical_identity).exclude(pk=self.pk).exists():
+                raise ValidationError('Cette identité existe déjà.')
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'name', 'canonical_identity'}
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} ({self.get_type_display()})"
@@ -66,3 +84,20 @@ class PartnerOperation(models.Model):
         if self._state.adding and self.share_percent == 40 and self.stakeholder_id:
             self.share_percent = self.stakeholder.partner_share_percent
         super().save(*args, **kwargs)
+
+class EconomicRole(models.TextChoices):
+    SHAREHOLDER = "SHAREHOLDER", _("Actionnaire")
+    INVESTOR = "INVESTOR", _("Investisseur")
+    PARTNER = "PARTNER", _("Partenaire / associé")
+    AGENT = "AGENT", _("Agent")
+    OPERATOR = "OPERATOR", _("Opérateur / opératrice")
+
+class StakeholderRole(models.Model):
+    role = models.CharField(choices=EconomicRole.choices, max_length=16)
+    effective_from = models.DateField()
+    effective_to = models.DateField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    stakeholder = models.ForeignKey(on_delete=models.RESTRICT, related_name='economic_roles', to='stakeholders.stakeholder')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=('stakeholder', 'role', 'effective_from'), name='unique_party_role_effective_date'), models.CheckConstraint(condition=models.Q(('effective_to__isnull', True), ('effective_to__gte', models.F('effective_from')), _connector='OR'), name='party_role_dates_valid')]

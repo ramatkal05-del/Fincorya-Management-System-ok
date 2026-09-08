@@ -1,0 +1,18 @@
+[
+  {"source_key":"brief-v1-david", "kind":"rule", "name":"David Matamba", "rule_kind":"REMUNERATION", "value":"50.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-victoria", "kind":"rule", "name":"Victoria Thonda", "rule_kind":"REMUNERATION", "value":"50.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-chris", "kind":"rule", "name":"Chris Kapia", "rule_kind":"REMUNERATION", "value":"50.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-joseph", "kind":"rule", "name":"Joseph Omari", "rule_kind":"REMUNERATION", "value":"40.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-ruth", "kind":"rule", "name":"Ruth", "roles":["SHAREHOLDER","AGENT"], "rule_kind":"REMUNERATION", "value":"0.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-fantiny-salary", "kind":"rule", "name":"Fantiny", "roles":["PARTNER"], "rule_kind":"REMUNERATION", "value":"0.00", "currency":"USD", "effective_from":null},
+  {"source_key":"brief-v1-fantiny-commission", "kind":"rule", "name":"Fantiny", "rule_kind":"COMMISSION", "value":"60.00", "fincorya_percent":"40.00", "effective_from":null},
+  {"source_key":"brief-v1-dividends", "kind":"rule_group", "rule_kind":"DIVIDEND", "count":4, "value":"25.00", "effective_from":null, "uncertainties":["Rattacher les quatre actionnaires à leurs identifiants avant activation"]},
+  {"source_key":"brief-v1-identity", "kind":"identity", "name":"Jenovic Mpoto", "canonical_name":"Mpoto Jenovic", "effective_from":null},
+  {"source_key":"brief-v1-provisional-dates", "kind":"historical_evidence", "effective_from":null, "uncertainties":["Les dates provisoires du 1er septembre ne sont pas confirmées"]},
+  {"source_key":"brief-v1-copied-counts", "kind":"historical_evidence", "declared_copied_from_theoretical":true, "effective_from":null},
+  {"source_key":"brief-v1-ruth-adjustment", "kind":"historical_evidence", "amount":"60.00", "currency":"USD", "synthetic_adjustment":true, "effective_from":null, "uncertainties":["Retrait artificiel exclu : ne pas transformer en écriture"]},
+  {"source_key":"brief-v1-cash-origin", "kind":"historical_evidence", "amount":"1540.00", "currency":"USD", "effective_from":null, "uncertainties":["Provenance du cash en main non confirmée"]},
+  {"source_key":"brief-v1-mobile-accounts", "kind":"account", "service":"M-Pesa", "owner_id":null, "balance":null, "effective_from":null, "uncertainties":["Vérifier le lien avec les deux comptes Vodacom M-Pesa ; aucun compte nouveau créé"]},
+  {"source_key":"brief-v1-historical-commissions", "kind":"commission", "stakeholder_id":null, "effective_from":null, "uncertainties":["Ventilation historique Fantiny / FINCORYA non confirmée ; ne pas appliquer rétroactivement 60/40"]},
+  {"source_key":"brief-v1-fantiny-position", "kind":"historical_evidence", "amount":"-369.00", "currency":"USD", "effective_from":null, "uncertainties":["Nature de la position négative à préciser ; ce n’est pas automatiquement une commission due"]}
+]

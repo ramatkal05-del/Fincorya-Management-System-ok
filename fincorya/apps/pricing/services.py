@@ -1,7 +1,7 @@
 """
 FINCORYA pricing services shared by application services.
 """
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _

@@ -25,7 +25,7 @@ def _ensure_access(user):
 @mfa_required
 def expense_list(request):
     _ensure_access(request.user)
-    rows = Expense.objects.select_related("currency", "created_by").prefetch_related("approvals")
+    rows = Expense.objects.select_related("currency", "created_by", "agent").prefetch_related("approvals")
     return render(request, "expenses/list.html", {"expenses": rows})
 
 
@@ -49,7 +49,7 @@ def expense_create(request):
 @mfa_required
 def expense_detail(request, expense_id):
     _ensure_access(request.user)
-    expense = get_object_or_404(Expense.objects.select_related("currency", "created_by").prefetch_related("approvals__decided_by"), pk=expense_id)
+    expense = get_object_or_404(Expense.objects.select_related("currency", "created_by", "agent").prefetch_related("approvals__decided_by"), pk=expense_id)
     return render(request, "expenses/detail.html", {"expense": expense, "decision_form": ExpenseDecisionForm()})
 
 

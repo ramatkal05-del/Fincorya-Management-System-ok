@@ -1,0 +1,10 @@
+{% extends "app_base.html" %}
+{% block title %}Nouveau compte — FINCORYA{% endblock %}
+{% block context_name %}Nouveau compte financier{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">Registre financier</p><h1>Nouveau compte</h1><p>Le solde ne peut pas être saisi ici : il provient exclusivement du grand livre.</p></div></header>
+<section class="panel"><form method="post" class="form-stack finance-form" novalidate>{% csrf_token %}
+{% include "_form_fields.html" with form=form %}
+<div class="button-row"><a class="button button-secondary" href="{% url 'finance:overview' %}">Annuler</a><button class="button button-primary" type="submit">Créer le compte</button></div>
+</form></section>
+{% endblock %}

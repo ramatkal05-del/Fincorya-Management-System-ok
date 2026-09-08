@@ -1,8 +1,12 @@
 from django.urls import path
 from . import views
+from . import management_views
 
 app_name = "accounts"
 urlpatterns = [
+    path("utilisateurs/", management_views.account_list, name="manage"),
+    path("utilisateurs/creer/<str:role>/", management_views.account_create, name="manage_create"),
+    path("utilisateurs/<int:pk>/statut/", management_views.account_status, name="manage_status"),
     path("login/", views.login_view, name="login"),
     path("verify/", views.verify_view, name="verify"),
     path("verify/email/send/", views.send_email_otp, name="send_email_otp"),

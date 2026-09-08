@@ -1,3 +1,4 @@
+from apps.stakeholders.models import Stakeholder
 import uuid
 from django import forms
 from apps.accounts.models import Role
@@ -7,6 +8,16 @@ from .models import OperationType, TransactionService
 
 
 class OperationForm(forms.Form):
+    field_order = ["type", "account", "service", "customer_identifier", "customer_name",
+                   "amount", "stakeholder", "commission_owner_confirmed", "note",
+                   "tariff_schedule", "idempotency_key"]
+    stakeholder = forms.ModelChoiceField(
+        label="Partenaire de commission", required=False,
+        queryset=Stakeholder.objects.filter(is_active=True),
+        help_text="Laissez vide si les commissions reviennent uniquement a FINCORYA.")
+    commission_owner_confirmed = forms.BooleanField(
+        label="Je confirme l'attribution des commissions", required=False)
+
     # Only the two daily business actions are exposed. The legacy received
     # transfer value remains in the model so historical data stays valid.
     type = forms.ChoiceField(
@@ -40,6 +51,8 @@ class OperationForm(forms.Form):
 
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
+        from django.conf import settings
+        self.fields['commission_owner_confirmed'].required = settings.FINANCE_LEDGER_ENABLED
         accounts = CashAccount.objects.select_related("agent", "currency").filter(is_active=True)
         if user.role == Role.AGENT:
             accounts = accounts.filter(agent=user)

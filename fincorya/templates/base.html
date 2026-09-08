@@ -6,20 +6,19 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#006B4F">
   <title>{% block title %}FINCORYA{% endblock %}</title>
-  <link rel="icon" href="{% static 'img/fincorya-group-logo-fr.svg' %}" type="image/svg+xml">
-  <!-- Google Fonts — Inter & Plus Jakarta Sans -->
+  <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="{% static 'css/fincorya.css' %}">
-  <link rel="stylesheet" href="{% static 'css/icons.css' %}">
   <link rel="stylesheet" href="{% static 'css/enterprise.css' %}">
   <link rel="stylesheet" href="{% static 'css/workflow.css' %}">
   <link rel="stylesheet" href="{% static 'css/cash.css' %}">
-  <link rel="stylesheet" href="{% static 'css/brand.css' %}?v=20260903-3">
-  <link rel="stylesheet" href="{% static 'css/system.css' %}?v=20260903-16">
+  <link rel="stylesheet" href="{% static 'css/brand.css' %}">
+  <link rel="stylesheet" href="{% static 'css/system.css' %}">
+  <link rel="stylesheet" href="{% static 'css/interface.css' %}">
   <script defer src="{% static 'django_htmx/htmx-2.min.js' %}"></script>
-  <script defer src="{% static 'js/app.js' %}?v=20260903-7"></script>
+  <script defer src="{% static 'js/app.js' %}"></script>
 </head>
 <body class="{% block body_class %}{% endblock %}" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <a class="skip-link" href="#contenu">Aller au contenu</a>

@@ -4,11 +4,14 @@
   <div class="workspace-backdrop" data-nav-backdrop hidden aria-hidden="true"></div>
   <aside id="main-navigation" class="workspace-sidebar" data-sidebar aria-label="Navigation principale">
     <div class="workspace-brand">
-      <a href="{% url 'dashboard' %}" aria-label="FINCORYA — Tableau de bord"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}" alt="FINCORYA Group" width="176" height="58"></a>
+      <a href="{% url 'dashboard' %}" aria-label="FINCORYA — Tableau de bord"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}" alt="FINCORYA Group" width="54" height="54"><span class="workspace-brand-name">FINCORYA<small>Group</small></span></a>
       <button class="icon-button mobile-only workspace-close" type="button" data-nav-close aria-label="Fermer la navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
     <nav>
       <p class="nav-kicker">Pilotage</p>
+      {% if request.user.role == 'ADMIN' or request.user.role == 'FINANCE_MANAGER' %}
+      <a class="workspace-link {% if request.resolver_match.namespace == 'finance' %}active{% endif %}" href="{% url 'finance:overview' %}" {% if request.resolver_match.namespace == 'finance' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 7h8M8 11h3m3 0h2M8 15h3m3 0h2"/></svg><span>Finance</span></a>
+      {% endif %}
       <a class="workspace-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg><span>Vue d'ensemble</span></a>
       {% if request.user.role == 'AGENT' or request.user.role == 'ADMIN' %}
         <p class="nav-kicker">Flux financiers</p>
@@ -18,6 +21,7 @@
       {% endif %}
       {% if request.user.role == 'ADMIN' %}
         <p class="nav-kicker">Administration</p>
+        <a class="workspace-link {% if request.resolver_match.url_name == 'manage' or request.resolver_match.url_name == 'manage_create' %}active{% endif %}" href="{% url 'accounts:manage' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-16a3 3 0 0 1 0 6m1 4a5 5 0 0 1 3 4v2"/></svg><span>Comptes utilisateurs</span></a>
         <a class="workspace-link {% if request.resolver_match.namespace == 'expenses' %}active{% endif %}" href="{% url 'expenses:list' %}" {% if request.resolver_match.namespace == 'expenses' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg><span>Dépenses et charges</span></a>
         <a class="workspace-link" href="{% url 'admin:index' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V7l-8-4ZM9 12l2 2 4-4"/></svg><span>Administration système</span></a>
       {% endif %}
@@ -31,11 +35,14 @@
   <div class="workspace-main">
     <header class="workspace-topbar">
       <button class="icon-button mobile-only" type="button" data-nav-open aria-expanded="false" aria-controls="main-navigation" aria-label="Ouvrir la navigation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      {% if request.user.role == 'AGENT' or request.user.role == 'ADMIN' %}
+      <form class="fc-search" action="{% url 'operations:list' %}" method="get" role="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><label class="sr-only" for="global-search">Rechercher une opération</label><input id="global-search" name="q" type="search" placeholder="Rechercher une opération, un client..." value="{{ request.GET.q|default:'' }}"></form>
+      {% endif %}
       <div class="workspace-context"><span class="context-mark" aria-hidden="true"></span><span>FINCORYA</span><span aria-hidden="true">/</span><strong>{% block context_name %}Espace de gestion{% endblock %}</strong></div>
-      <div class="workspace-actions"><div class="profile-menu"><button class="profile-compact" type="button" data-profile-toggle aria-expanded="false" aria-controls="profile-dropdown"><span class="avatar" aria-hidden="true">{{ request.user.email|first|upper }}</span><span class="desktop-only">{{ request.user.first_name|default:request.user.get_role_display }}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button><div id="profile-dropdown" class="profile-dropdown" data-profile-dropdown hidden><div><strong>{{ request.user.email }}</strong><small>{{ request.user.get_role_display }}</small></div><a class="profile-dropdown-link" href="{% url 'accounts:profile' %}">Mon profil</a><a class="profile-dropdown-link" href="{% url 'accounts:password_change' %}">Changer le mot de passe</a><form action="{% url 'accounts:logout' %}" method="post">{% csrf_token %}<button type="submit">Déconnexion</button></form></div></div></div>
+      <div class="workspace-actions"><div class="profile-menu"><button class="profile-compact" type="button" data-profile-toggle aria-expanded="false" aria-haspopup="true" aria-controls="profile-dropdown" aria-label="Menu du profil de {{ request.user.get_full_name|default:request.user.email }}"><span class="avatar" aria-hidden="true">{{ request.user.email|first|upper }}</span><span class="desktop-only">{{ request.user.first_name|default:request.user.get_role_display }}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button><div id="profile-dropdown" class="profile-dropdown" data-profile-dropdown hidden><div><strong>{{ request.user.email }}</strong><small>{{ request.user.get_role_display }}</small></div><a class="profile-dropdown-link" href="{% url 'accounts:profile' %}">Mon profil</a><a class="profile-dropdown-link" href="{% url 'accounts:password_change' %}">Changer le mot de passe</a><form action="{% url 'accounts:logout' %}" method="post">{% csrf_token %}<button type="submit">Déconnexion</button></form></div></div></div>
     </header>
     <main id="contenu" class="workspace-content" tabindex="-1">
-      {% for message in messages %}<div class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-warning{% endif %}" role="status">{{ message }}</div>{% endfor %}
+      {% for message in messages %}<div class="alert {% if 'error' in message.tags %}alert-error{% elif 'success' in message.tags %}alert-success{% elif 'warning' in message.tags %}alert-warning{% else %}alert-info{% endif %}" role="{% if 'error' in message.tags %}alert{% else %}status{% endif %}">{{ message }}</div>{% endfor %}
       {% block module_content %}{% endblock %}
       <footer class="workspace-footer"><span>FINCORYA Group</span><span>Votre avenir financier, notre engagement.</span></footer>
     </main>

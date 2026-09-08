@@ -1,0 +1,10 @@
+{% extends "app_base.html" %}{% block title %}Lot {{ batch.pk }} — FINCORYA{% endblock %}{% block context_name %}Journal financier{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><h1>{{ batch.description }}</h1><p>{{ batch.get_status_display }} · {{ batch.effective_at }} · {{ batch.event_type }}</p></div></header>
+{% include "finance/_nav.html" %}
+<section class="panel"><div class="table-wrap"><table><caption class="sr-only">Écritures du lot</caption><thead><tr><th scope="col">Compte</th><th scope="col">Sens</th><th scope="col">Montant</th><th scope="col">Devise</th></tr></thead><tbody>{% for entry in batch.entries.all %}<tr><td>{{ entry.account.code }}</td><td>{{ entry.get_side_display }}</td><td>{{ entry.amount }}</td><td>{{ entry.currency.code }}</td></tr>{% endfor %}</tbody></table></div>
+{% if policy.approve and not batch.source_model and batch.event_type != 'EXPENSE_PAYMENT' and batch.event_type != 'PARTNER_PAYMENT' %}
+{% if batch.status == 'DRAFT' %}<form method="post" action="{% url 'finance:batch_action' batch.pk 'post' %}">{% csrf_token %}<button class="button button-primary" type="submit">Approuver et publier</button></form>{% endif %}
+{% if batch.status == 'POSTED' %}<form method="post" class="form-stack finance-form" novalidate action="{% url 'finance:batch_action' batch.pk 'reverse' %}">{% csrf_token %}{% include "_form_fields.html" with form=reason_form %}<button class="button button-secondary" type="submit">Contre-passer</button></form>{% endif %}
+{% endif %}</section>
+{% endblock %}

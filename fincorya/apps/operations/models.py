@@ -29,6 +29,7 @@ class TransactionService(models.TextChoices):
 
 
 class Operation(models.Model):
+    commission_owner_confirmed = models.BooleanField(default=False)
     reference = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, verbose_name=_("Référence"))
     type = models.CharField(max_length=20, choices=OperationType.choices)
     status = models.CharField(max_length=20, choices=OperationStatus.choices, default=OperationStatus.COMPLETED)

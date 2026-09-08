@@ -14,7 +14,7 @@ from apps.pricing.models import TariffSchedule
 from apps.pricing.services import current_rate_to_usd, from_usd, lookup_fee
 from .forms import OperationCancellationForm, OperationFilterForm, OperationForm, OperationRevisionForm
 from .models import Operation, OperationStatus, OperationType
-from .services import cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer, receive_transfer, revise_operation
+from .services import cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer, revise_operation
 
 
 def _operations_for(user):
@@ -73,6 +73,8 @@ def operation_create(request):
                     idempotency_key=data["idempotency_key"],
                     service=data["service"], customer_identifier=data["customer_identifier"],
                     customer_name=data["customer_name"],
+                    stakeholder=data["stakeholder"],
+                    commission_owner_confirmed=data["commission_owner_confirmed"],
                 )
             except (ValidationError, PermissionDenied) as exc:
                 form.add_error(None, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))

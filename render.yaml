@@ -30,6 +30,10 @@ services:
         value: "False"
       - key: TRUST_PROXY_HEADERS
         value: "True"
+      - key: ALLOWED_HOSTS
+        value: fincorya.com,www.fincorya.com
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://fincorya.com,https://www.fincorya.com
       - key: MEDIA_ROOT
         value: /var/data/media
       - key: REPORT_FONT_DIR

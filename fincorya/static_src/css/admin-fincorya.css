@@ -1,0 +1,53 @@
+@font-face{font-family:Inter;src:url('../assets/fonts/Inter-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Inter;src:url('../assets/fonts/Inter-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+:root,html[data-theme="light"],html[data-theme="dark"]{
+ --primary:#006b4f;--secondary:#013b36;--accent:#fff;--primary-fg:#fff;
+ --body-fg:#18201f;--body-bg:#f7f8f5;--body-quiet-color:#5f6b67;--body-medium-color:#46564f;
+ --body-loud-color:#013b36;--header-color:#fff;--header-branding-color:#fff;--header-bg:#013b36;
+ --header-link-color:#fff;--breadcrumbs-fg:#d4e6df;--breadcrumbs-link-fg:#fff;--breadcrumbs-bg:#006b4f;
+ --link-fg:#006b4f;--link-hover-color:#013b36;--link-selected-fg:#013b36;
+ --hairline-color:#e8eeea;--border-color:#dce3df;--darkened-bg:#f0f5f1;--selected-bg:#e7f3ec;
+ --selected-row:#edf7f1;--button-fg:#fff;--button-bg:#006b4f;--button-hover-bg:#013b36;
+ --default-button-bg:#006b4f;--default-button-hover-bg:#013b36;--close-button-bg:#5f6b67;
+ --delete-button-bg:#b3362b;--delete-button-hover-bg:#912b23;
+ --object-tools-fg:#fff;--object-tools-bg:#006b4f;--object-tools-hover-bg:#013b36;
+ --font-family-primary:Inter,Arial,sans-serif;color-scheme:light;
+}
+body{font-family:Inter,Arial,sans-serif;font-size:14px;line-height:1.6}
+#header{padding:16px 28px;gap:24px;flex-wrap:wrap;box-sizing:border-box}
+.admin-brand{display:flex;align-items:center;gap:12px;text-decoration:none}
+.admin-brand img{width:50px;height:50px;border-radius:6px}
+.admin-brand span{font-size:16px;font-weight:600;letter-spacing:.06em;color:#fff}
+.admin-brand small{display:block;font-size:11px;font-weight:400;letter-spacing:0;color:#b8d4c8}
+.admin-product-links{display:flex;gap:8px;flex-wrap:wrap}
+.admin-product-links a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;border-radius:6px;background:rgb(255 255 255 / 8%);font-size:12px}
+#user-tools{font-size:11px;line-height:2}
+div.breadcrumbs{padding:14px 28px;font-size:12px}
+#content{padding:28px;max-width:1600px;box-sizing:border-box}
+h1{font-size:27px;font-weight:600;letter-spacing:-.03em;margin:0 0 24px}
+h2{font-size:16px;font-weight:600}
+.module,#changelist,.inline-group{background:#fff;border:1px solid var(--border-color);border-radius:10px;box-shadow:0 2px 8px rgb(24 32 31 / 4%);overflow:hidden}
+.module h2,.module caption,.inline-group h2{background:#013b36;padding:14px 18px;font-size:13px;letter-spacing:0;font-weight:600}
+.module table{width:100%}
+td,th{padding:14px 16px;font-size:13px;line-height:1.5}
+thead th{background:#f4f8f5;text-transform:none;font-size:12px}
+.form-row{padding:18px 22px;border-bottom:1px solid #edf1ee}
+.aligned label{font-weight:500;font-size:13px}
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #bccdc4;border-radius:7px;background:#fff;color:#18201f;font-family:inherit;font-size:14px;max-width:100%}
+input[type="checkbox"],input[type="radio"]{accent-color:#006b4f}
+input:focus,select:focus,textarea:focus{outline:2px solid #006b4f;outline-offset:2px}
+.button,input[type="submit"],input[type="button"],.submit-row input,.object-tools a{min-height:44px;box-sizing:border-box;border-radius:7px;padding:12px 18px;background:#006b4f;color:#fff;font-weight:600;font-size:12px;text-transform:none}
+.submit-row{padding:18px;background:#fff;border:1px solid #dce3df;border-radius:10px}
+.submit-row a.deletelink{height:auto;min-height:44px;padding:12px;box-sizing:border-box;border-radius:7px}
+#nav-sidebar{background:#fff;border-right:1px solid #dce3df;padding:12px;box-sizing:border-box}
+#nav-sidebar .module{box-shadow:none;margin-bottom:12px}
+#nav-sidebar th,#nav-sidebar td{padding:10px;font-size:12px}
+#nav-filter{margin:8px 0 16px;width:100%}
+#changelist-filter{background:#fff;border-left:1px solid #dce3df}
+#changelist-filter h2{background:#013b36}
+.help,.helptext{color:#5f6b67;font-size:12px;line-height:1.6}
+ul.messagelist li{padding:16px 24px;background-color:#e7f4ed;color:#185941}
+ul.messagelist li.error{background-color:#fcebe8;color:#942d23}
+.errornote{border-color:#c0392b;background:#fcebe8;color:#942d23;border-radius:7px}
+.theme-toggle{display:none}
+@media(max-width:767px){#header{padding:16px;gap:12px}.admin-product-links{width:100%}.admin-product-links a{font-size:11px;padding:0 8px}#content{padding:18px 12px}.form-row{padding:16px}.aligned label{width:auto}.aligned .form-row input{width:100%}#changelist .results{overflow-x:auto}.object-tools{float:none;margin:0 0 16px}h1{font-size:24px}}

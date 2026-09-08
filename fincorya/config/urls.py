@@ -3,6 +3,8 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.db import connection
 from django.urls import include, path, re_path
+from django.templatetags.static import static
+from django.views.generic import RedirectView
 from django.views.static import serve
 from apps.accounts.views import dashboard
 
@@ -18,8 +20,10 @@ def health(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health, name="health"),
+    path("favicon.ico", RedirectView.as_view(url=static("img/favicon.svg"), permanent=True)),
     path("auth/", include("apps.accounts.urls")),
     path("operations/", include("apps.operations.urls")),
+    path("finance/", include("apps.finance.urls")),
     path("caisses/", include("apps.cash.urls")),
     path("charges/", include("apps.expenses.urls")),
     path("rapports/", include("apps.reports.urls")),

@@ -8,7 +8,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+
+
+from apps.finance.locking import ledger_atomic
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -53,7 +55,7 @@ def _apply_global_movement(*, global_account, direction, amount, movement_type, 
     return movement
 
 
-@transaction.atomic
+@ledger_atomic
 def adjust_global_cash(*, global_account_id, direction, amount, adjusted_by, note):
     if adjusted_by.role != Role.ADMIN:
         raise PermissionDenied(_("Seul l'administrateur peut modifier le capital global."))
@@ -63,13 +65,16 @@ def adjust_global_cash(*, global_account_id, direction, amount, adjusted_by, not
         raise ValidationError(_("Une justification est obligatoire."))
     global_account = GlobalCashAccount.objects.select_for_update().get(pk=global_account_id)
     movement_type = GlobalMovementType.CAPITAL_IN if direction == MovementDirection.IN else GlobalMovementType.CAPITAL_OUT
-    return _apply_global_movement(
+    movement = _apply_global_movement(
         global_account=global_account, direction=direction, amount=amount,
         movement_type=movement_type, actor=adjusted_by, note=note,
     )
+    from apps.finance.events import record_capital
+    record_capital(movement, adjusted_by)
+    return movement
 
 
-@transaction.atomic
+@ledger_atomic
 def allocate_cash(*, account_id: int, amount: Decimal, allocated_by, note: str = "") -> CashFunding:
     if allocated_by.role != Role.ADMIN:
         raise PermissionDenied(_("Seul l'administrateur peut allouer une caisse."))
@@ -100,6 +105,8 @@ def allocate_cash(*, account_id: int, amount: Decimal, allocated_by, note: str =
     funding.applied_at = timezone.now()
     funding.save(update_fields=["applied_at"])
     audit_record(actor=allocated_by, action="CASH_FUND", instance=funding, after={"amount": str(amount), "account": account_id, "global_account": global_account.pk, "global_balance": str(global_account.balance)})
+    from apps.finance.events import record_funding
+    record_funding(funding, allocated_by)
     return funding
 
 
@@ -138,7 +145,7 @@ def apply_movement(*, account: CashAccount, direction: str, amount: Decimal,
     )
 
 
-@transaction.atomic
+@ledger_atomic
 def handover_cash(*, account_id: int, amount: Decimal, requested_by) -> CashHandover:
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     if not _can_manage_account(requested_by, account):
@@ -152,7 +159,7 @@ def handover_cash(*, account_id: int, amount: Decimal, requested_by) -> CashHand
     return handover
 
 
-@transaction.atomic
+@ledger_atomic
 def confirm_handover(*, handover_id: int, confirmed_by) -> CashHandover:
     handover = CashHandover.objects.select_for_update().get(pk=handover_id)
     if handover.status != HandoverStatus.PENDING:
@@ -182,11 +189,13 @@ def confirm_handover(*, handover_id: int, confirmed_by) -> CashHandover:
     handover.confirmed_by = confirmed_by
     handover.resolved_at = timezone.now()
     handover.save(update_fields=["status", "confirmed_by", "resolved_at"])
+    from apps.finance.events import record_handover
+    record_handover(handover, confirmed_by)
     audit_record(actor=confirmed_by, action="HANDOVER_CONFIRM", instance=handover)
     return handover
 
 
-@transaction.atomic
+@ledger_atomic
 def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, closed_by, justification: str = "") -> DailyClosure:
     """Lock the account, freeze the FINCORYA business day and compute its variance."""
     account = CashAccount.objects.select_for_update().get(pk=account_id)

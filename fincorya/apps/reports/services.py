@@ -12,7 +12,7 @@ from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -21,9 +21,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.charts.legends import Legend
 from reportlab.graphics.shapes import Drawing, String
-from reportlab.platypus import CondPageBreak, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps.accounts.models import Role, User
+from apps.accounts.models import Role
 from apps.audit.services import record
 from apps.contracts.models import Contract
 from apps.operations.models import Operation
@@ -35,7 +35,7 @@ from .models import ReportExport
 
 
 def _style_workbook(workbook):
-    green, deep, gold = "006B4F", "013B36", "C9A227"
+    green = "006B4F"
     for sheet in workbook.worksheets:
         sheet.sheet_view.showGridLines = False
         sheet.freeze_panes = "A2"
@@ -92,7 +92,7 @@ def _csv_bytes(snapshot):
     for row in snapshot["rows"]:
         writer.writerow([row[key] for key in ("reference", "date", "type", "service", "customer_name", "customer_identifier", "status", "amount", "currency", "fee", "agent")])
     for currency, totals in snapshot["totals"]["by_currency"].items():
-        writer.writerow(["TOTAL", "", "", "", totals["amount"], currency, totals["fees"], snapshot["totals"]["count"]])
+        writer.writerow(["TOTAL", "", "", "", "", "", str(snapshot["totals"]["count"]) + " opérations", totals["amount"], currency, totals["fees"], ""])
     return ("\ufeff" + stream.getvalue()).encode("utf-8")
 
 
@@ -304,7 +304,7 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
     periods = ProfitPeriod.objects.filter(start_date__lte=end, end_date__gte=start, status="FINALIZED")
     distributions = Distribution.objects.select_related("allocation__period__currency", "stakeholder").filter(allocation__period__in=periods)
     investments = Investment.objects.select_related("stakeholder", "currency").filter(invested_on__lte=end)
-    partner_rows = PartnerOperation.objects.select_related("stakeholder", "operation").filter(operation__created_at__gte=start_at, operation__created_at__lt=end_at)
+    partner_rows = PartnerOperation.objects.select_related("stakeholder", "operation__currency").filter(operation__created_at__gte=start_at, operation__created_at__lt=end_at)
     stakeholders = Stakeholder.objects.select_related("owner").prefetch_related(
         Prefetch("contracts", queryset=Contract.objects.order_by("-starts_on", "-id"), to_attr="ordered_contracts")
     ).filter(is_active=True)

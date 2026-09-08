@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
+from apps.finance.locking import ledger_atomic
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -91,7 +92,7 @@ def _claim_request(actor, key, action):
         raise ValidationError(_("La clé d'idempotence est trop longue."))
     try:
         with transaction.atomic():
-            request, _ = OperationRequest.objects.get_or_create(actor=actor, key=key, defaults={"action": action})
+            request, _created = OperationRequest.objects.get_or_create(actor=actor, key=key, defaults={"action": action})
     except IntegrityError:
         # A concurrent request won the unique (actor, key) reservation.
         request = OperationRequest.objects.get(actor=actor, key=key)
@@ -107,10 +108,10 @@ def _complete_request(request, operation):
         request.save(update_fields=["operation"])
 
 
-@transaction.atomic
+@ledger_atomic
 def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                           manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                          service="AIRTEL_MONEY", customer_identifier="", customer_name="") -> Operation:
+                          service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
     """Register a FINCORYA sent transfer and credit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -127,7 +128,7 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
         amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
-        note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
+        commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
     apply_movement(
         account=account, direction=MovementDirection.IN, amount=amount + pricing["fee"],
@@ -136,14 +137,20 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Transfert envoyé enregistré"))
+    if stakeholder is not None:
+        from apps.stakeholders.models import PartnerOperation
+        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    if operation.status == OperationStatus.COMPLETED:
+        from apps.finance.events import record_operation
+        record_operation(operation, agent)
     _complete_request(request, operation)
     return operation
 
 
-@transaction.atomic
+@ledger_atomic
 def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                       manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                      service="AIRTEL_MONEY", customer_identifier="", customer_name="") -> Operation:
+                      service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
     """Registers an incoming payout request. No cash movement yet — status PENDING until paid."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -160,15 +167,21 @@ def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
         amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
-        note=note, **_customer_fields(service, customer_identifier, customer_name),
+        commission_owner_confirmed=commission_owner_confirmed, note=note, **_customer_fields(service, customer_identifier, customer_name),
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Transfert reçu en attente"))
+    if stakeholder is not None:
+        from apps.stakeholders.models import PartnerOperation
+        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    if operation.status == OperationStatus.COMPLETED:
+        from apps.finance.events import record_operation
+        record_operation(operation, agent)
     _complete_request(request, operation)
     return operation
 
 
-@transaction.atomic
+@ledger_atomic
 def pay_received_transfer(*, operation_id: int, paid_by) -> Operation:
     """Pays out a PENDING received transfer exactly once (section 11: 'Double paiement')."""
     operation = Operation.objects.select_for_update().get(pk=operation_id)
@@ -191,15 +204,17 @@ def pay_received_transfer(*, operation_id: int, paid_by) -> Operation:
     operation.status = OperationStatus.COMPLETED
     operation.paid_at = timezone.now()
     operation.save(update_fields=["status", "paid_at"])
+    from apps.finance.events import record_operation
+    record_operation(operation, paid_by)
     audit_record(actor=paid_by, action="OPERATION_PAY", instance=operation)
     _notify_operation(operation, paid_by, _("Transfert reçu payé"))
     return operation
 
 
-@transaction.atomic
+@ledger_atomic
 def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                        manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                       service="AIRTEL_MONEY", customer_identifier="", customer_name="") -> Operation:
+                       service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
     """Register a FINCORYA withdrawal and debit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -219,7 +234,7 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
         amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
-        note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
+        commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
     apply_movement(
         account=account, direction=MovementDirection.OUT, amount=cash_impact,
@@ -228,11 +243,17 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Retrait payé enregistré"))
+    if stakeholder is not None:
+        from apps.stakeholders.models import PartnerOperation
+        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    if operation.status == OperationStatus.COMPLETED:
+        from apps.finance.events import record_operation
+        record_operation(operation, agent)
     _complete_request(request, operation)
     return operation
 
 
-@transaction.atomic
+@ledger_atomic
 def cancel_operation(*, operation_id: int, cancelled_by, reason: str) -> Operation:
     """Cancel an operation with a locked, auditable counter-movement."""
     operation = Operation.objects.select_for_update().get(pk=operation_id)
@@ -255,6 +276,14 @@ def cancel_operation(*, operation_id: int, cancelled_by, reason: str) -> Operati
         movement_type=MovementType.ADJUSTMENT, actor=cancelled_by, operation=operation,
         note=f"Annulation {operation.reference}: {reason}",
     )
+    from apps.finance.cutover import active_cutover
+    if active_cutover():
+        from apps.finance.models import JournalBatch
+        from apps.finance.services import reverse_batch
+        batch = JournalBatch.objects.filter(source_model="operations.Operation", source_id=str(operation.pk), event_type="OPERATION", status="POSTED").first()
+        if batch is None:
+            raise ValidationError("Missing original ledger batch.")
+        reverse_batch(batch_id=batch.pk, actor=cancelled_by, reason=reason, idempotency_key=f"cancel-operation-{operation.pk}")
     operation.status = OperationStatus.CANCELLED
     operation.cancel_reason = reason.strip()
     operation.cancelled_at = timezone.now()
@@ -264,7 +293,7 @@ def cancel_operation(*, operation_id: int, cancelled_by, reason: str) -> Operati
     return operation
 
 
-@transaction.atomic
+@ledger_atomic
 def revise_operation(*, operation_id: int, changes: dict, reason: str, revised_by) -> Operation:
     """Allowed only before the owning business day is closed (section 6: 'Avant clôture seulement')."""
     operation = Operation.objects.select_for_update().get(pk=operation_id)
@@ -277,6 +306,9 @@ def revise_operation(*, operation_id: int, changes: dict, reason: str, revised_b
     if _day_is_closed(account, business_date(operation.created_at)):
         raise ValidationError(_("Cette opération appartient à une journée déjà clôturée."))
 
+    from apps.finance.cutover import active_cutover
+    if active_cutover() and operation.status == OperationStatus.COMPLETED:
+        raise ValidationError("Annulez puis remplacez cette operation pour conserver son historique financier.")
     allowed = {"amount", "fee", "note"}
     unknown = set(changes) - allowed
     if unknown:

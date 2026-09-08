@@ -7,7 +7,8 @@ from apps.audit.services import record
 from apps.accounts.models import Role, User
 from apps.expenses.models import Expense, ExpenseStatus
 from apps.operations.models import Operation, OperationStatus
-from apps.pricing.services import from_usd
+
+
 from apps.stakeholders.models import Investment, StakeholderType
 from config.business_time import business_day_bounds
 from .models import Allocation, Distribution, ProfitPeriod, ProfitStatus

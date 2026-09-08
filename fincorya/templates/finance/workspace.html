@@ -1,0 +1,34 @@
+{% extends "app_base.html" %}
+{% block title %}{{ title }} — FINCORYA{% endblock %}
+{% block context_name %}Finance{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">Registre financier</p><h1>{{ title }}</h1></div>
+<div class="button-row">
+{% if policy.administer %}
+{% if section == 'parties' %}<a class="button button-primary" href="{% url 'finance:create_record' 'party' %}">Nouveau dossier de partie prenante</a><a class="button button-secondary" href="{% url 'finance:create_record' 'role' %}">Ajouter un rôle</a>{% endif %}
+{% if section == 'rules' %}<a class="button button-primary" href="{% url 'finance:create_record' 'rule' %}">Nouvelle règle datée</a>{% endif %}
+{% if section == 'services' %}<a class="button button-primary" href="{% url 'finance:create_record' 'service' %}">Nouveau service</a>{% endif %}
+{% if section == 'periods' %}<a class="button button-primary" href="{% url 'finance:period_create' %}">Nouvelle période</a>{% endif %}
+{% endif %}
+{% if section == 'journal' and policy.prepare %}<a class="button button-primary" href="{% url 'finance:batch_create' %}">Préparer un lot</a>{% endif %}
+</div></header>
+{% include "finance/_nav.html" %}
+<section class="panel finance-records">
+{% for row in page %}
+<article class="finance-record">
+{% if section == 'parties' %}<h2><a href="{% url 'finance:partner' row.pk %}">{{ row.name }}</a></h2><p>{{ row.get_type_display }} · {{ row.email|default:'Sans e-mail' }}</p>{% for role in row.economic_roles.all %}<p>{{ role.get_role_display }} : {{ role.effective_from }} — {{ role.effective_to|default:'sans fin définie' }}</p>{% empty %}<p>Rôles économiques à confirmer.</p>{% endfor %}
+{% elif section == 'rules' %}<h2>{{ row.stakeholder.name }}</h2><p>{{ row.get_kind_display }} : {{ row.value }} {{ row.currency.code }} · Effet : {{ row.effective_from }} — {{ row.effective_to|default:'jusqu’à la prochaine version' }}</p>
+{% elif section == 'services' %}<h2>{{ row.name }}</h2><p>{{ row.code }} · {{ row.notes }}</p>
+{% elif section == 'journal' %}<h2><a href="{% url 'finance:batch' row.pk %}">{{ row.description }}</a></h2><p>{{ row.effective_at }} · {{ row.get_status_display }} · {{ row.event_type }}</p>
+{% elif section == 'periods' %}<h2><a href="{% url 'finance:period' row.pk %}">{{ row.get_period_type_display }} : {{ row.start_date }} — {{ row.end_date }}</a></h2><p>{{ row.get_status_display }} · {{ row.timezone_name }}</p>
+{% elif section == 'imports' %}<h2>{{ row.source_key }}</h2><pre>{{ row.payload }}</pre>{% for issue in row.anomalies %}<p class="status-badge status-pending">{{ issue }}</p>{% endfor %}<p>{{ row.resolution|default:'En préparation — aucune écriture définitive' }}</p>{% if policy.administer %}<a class="button button-secondary" href="{% url 'finance:import_review' row.pk %}">Examiner la source</a>{% endif %}
+{% elif section == 'reconciliation' %}<h2>{{ row.account.code }} · {{ row.currency.code }}</h2><p>Ancien : {{ row.legacy_balance }} · Repris : {{ row.migrated_balance }} · Différence : {{ row.difference }}</p><p>Origine : {{ row.difference_origin|default:'Aucun écart de reprise' }} · Bascule : {{ row.run.cutover_at }}</p>{% for issue in row.anomalies %}<p>{{ issue }}</p>{% endfor %}
+{% elif section == 'expenses' %}<h2>{{ row.label }}</h2><p>Charge reconnue : {{ row.amount }} {{ row.currency.code }} · {{ row.incurred_on }}</p>{% for payment in row.payments.all %}<p>Paiement : {{ payment.amount }} · {{ payment.paid_at }}</p>{% empty %}<p>Aucun paiement enregistré.</p>{% endfor %}{% if policy.approve %}<a class="button button-secondary" href="{% url 'finance:payment' 'expense' row.pk %}">Enregistrer un paiement</a>{% endif %}
+{% elif section == 'profits' %}<h2>{{ row.start_date }} — {{ row.end_date }} · {{ row.currency.code }}</h2><p>Résultat : {{ row.net_profit }} · Trésorerie à la clôture : {{ row.snapshot.cash }} · Montant proposé : {{ row.proposed_distribution }}</p>{% if row.allocations.exists %}<p>Distribution approuvée : {{ row.proposed_distribution }} {{ row.currency.code }}</p>{% else %}{% if policy.prepare %}<a class="button button-secondary" href="{% url 'finance:distribution_proposal' row.pk %}">Proposer une distribution</a>{% endif %}{% if policy.approve and row.proposed_at %}<form method="post" action="{% url 'finance:distribution_approve' row.pk %}">{% csrf_token %}<input type="hidden" name="amount" value="{{ row.proposed_distribution|stringformat:'.2f' }}"><button class="button button-primary">Approuver {{ row.proposed_distribution }} {{ row.currency.code }}</button></form>{% endif %}{% endif %}
+{% elif section == 'distributions' %}<h2>{{ row.stakeholder.name }}</h2><p>{{ row.amount }} {{ row.allocation.period.currency.code }} · {{ row.get_status_display }} · {{ row.paid_at|default:'Non réglée' }}</p>{% if policy.approve and row.status == 'DUE' %}<a class="button button-secondary" href="{% url 'finance:payment' 'distribution' row.pk %}">Régler ou réinvestir</a>{% endif %}
+{% endif %}
+</article>
+{% empty %}<div class="empty-state compact"><h2>Aucun élément</h2><p>Les données seront affichées après leur saisie ou leur préparation explicite.</p></div>{% endfor %}
+</section>
+{% if page.has_other_pages %}<nav aria-label="Pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Précédent</a>{% endif %}<span>Page {{ page.number }} sur {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?page={{ page.next_page_number }}">Suivant</a>{% endif %}</nav>{% endif %}
+{% endblock %}

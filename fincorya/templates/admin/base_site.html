@@ -1,0 +1,5 @@
+{% extends "admin/base.html" %}{% load static %}
+{% block title %}{{ title }} | Administration FINCORYA{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/admin-fincorya.css' %}">{% endblock %}
+{% block branding %}<a class="admin-brand" href="{% url 'admin:index' %}"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}" alt="FINCORYA Group"><span>FINCORYA<small>Administration</small></span></a>{% endblock %}
+{% block nav-global %}<nav class="admin-product-links" aria-label="Espaces FINCORYA"><a href="{% url 'dashboard' %}">Tableau de bord</a><a href="{% url 'accounts:manage' %}">Comptes utilisateurs</a><a href="{% url 'finance:overview' %}">Finance &amp; Trésorerie</a></nav>{% endblock %}

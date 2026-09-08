@@ -1,0 +1,12 @@
+{% extends "app_base.html" %}
+{% block context_name %}Préparation d’import{% endblock %}
+{% block module_content %}
+<header class="page-hero"><h1>Revue de {{ row.source_key }}</h1></header>
+{% include "finance/_nav.html" %}
+<section class="panel"><h2>Source conservée</h2><pre>{{ row.payload }}</pre>
+{% for issue in row.anomalies %}<p>{{ issue }}</p>{% endfor %}
+<p>La revue ne crée ni compte, ni règle datée, ni écriture financière. Une source exclue reste conservée pour traçabilité.</p>
+{% if row.reviewed_by_id %}<p>{{ row.resolution }}</p>{% else %}
+<form method="post" class="form-stack finance-form" novalidate>{% csrf_token %}{% include "_form_fields.html" with form=form %}<button class="button button-primary" type="submit">Enregistrer la revue</button></form>
+{% endif %}</section>
+{% endblock %}
