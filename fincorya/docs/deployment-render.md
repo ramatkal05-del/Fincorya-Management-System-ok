@@ -17,29 +17,33 @@ configuration administrateur après la mise en service.
 | Élément | Détail |
 |---|---|
 | Compte Render | https://render.com — plan Starter minimum |
-| Dépôt Git | Le code doit être poussé sur GitHub ou GitLab |
-| Python | 3.11.9 (pinné dans `runtime.txt`) |
+| Dépôt Git | `github.com/ramatkal05-del/Fincorya-Management-System-ok` |
+| Branche | **`Fincorya`** (pas `main`) |
+| Python | 3.11.9 (pinné dans `runtime.txt` à la racine du dépôt) |
 | PostgreSQL | Fourni par Render (plan Starter minimum) |
 | Polices PDF | Non requises : reportlab utilise Helvetica par défaut sur Linux |
 
 ---
 
-## 2. Fichiers de déploiement fournis
+## 2. Fichiers de déploiement
 
-| Fichier | Rôle |
-|---|---|
-| `render.yaml` | Blueprint Render (infrastructure as code) |
-| `Procfile` | Commandes `web` (gunicorn) et `release` (migrations + collectstatic) |
-| `build.sh` | Script de build (pip install, collectstatic, migrate) |
-| `runtime.txt` | Version Python (`python-3.11.9`) |
-| `requirements.txt` | Dépendances Python |
-| `.env.example` | Modèle de variables d'environnement |
+| Fichier | Emplacement | Rôle |
+|---|---|---|
+| `render.yaml` | Racine du dépôt | Blueprint Render (infrastructure as code) |
+| `runtime.txt` | Racine du dépôt | Version Python (`python-3.11.9`) — **Render lit ce fichier à la racine** |
+| `Procfile` | `fincorya/` | Commandes `web` (gunicorn) et `release` (migrate + create_admin) |
+| `build.sh` | `fincorya/` | Script de build (pip install, collectstatic, migrate, create_admin) |
+| `requirements.txt` | `fincorya/` | Dépendances Python |
+| `.env.example` | `fincorya/` | Modèle de variables d'environnement |
+
+> `runtime.txt` existe **aux deux emplacements** (racine + `fincorya/`) :
+> la racine pour Render, `fincorya/` pour Heroku et autres PaaS.
 
 Le `render.yaml` crée automatiquement :
 
 - **Une base de données PostgreSQL** (`fincorya-db`) avec utilisateur `fincorya_app`.
 - **Un service web** (`fincorya`) avec gunicorn, 3 workers, timeout 120 s.
-- **Un disque persistant** de 5 Go monté sur `/opt/render/media` pour les
+- **Un disque persistant** de 10 Go monté sur `/var/data` pour les
   justificatifs, photos, contrats et rapports générés.
 
 ---
@@ -49,19 +53,22 @@ Le `render.yaml` crée automatiquement :
 ### 3.1. Pousser le code sur GitHub
 
 ```bash
-git push origin main
+git push origin Fincorya
 ```
+
+> La branche de déploiement est **`Fincorya`**, pas `main`.
 
 ### 3.2. Importer le Blueprint sur Render
 
 1. Aller sur https://dashboard.render.com
 2. Cliquer **New** → **Blueprint**
-3. Sélectionner le dépôt GitHub contenant FINCORYA
-4. Render détecte `render.yaml` automatiquement
-5. Vérifier les ressources détectées :
+3. Sélectionner le dépôt `ramatkal05-del/Fincorya-Management-System-ok`
+4. **Branch** : `Fincorya`
+5. Render détecte `render.yaml` à la racine automatiquement
+6. Vérifier les ressources détectées :
    - `fincorya-db` (PostgreSQL)
    - `fincorya` (Web Service)
-6. Cliquer **Apply**
+7. Cliquer **Apply**
 
 ### 3.3. Définir les secrets manuels
 
@@ -69,21 +76,27 @@ Dans le dashboard Render, service `fincorya` → **Environment** :
 
 | Variable | Valeur | Notes |
 |---|---|---|
-| `DJANGO_SECRET_KEY` | Clé aléatoire longue | `python -c "import secrets; print(secrets.token_urlsafe(64))"` |
 | `EMAIL_HOST` | `smtp.gmail.com` ou équivalent | |
 | `EMAIL_HOST_USER` | Adresse email d'envoi | |
 | `EMAIL_HOST_PASSWORD` | Mot de passe d'application | Gmail : mot de passe d'application, pas le mot de passe normal |
+| `ADMIN_PASSWORD` | *(optionnel)* | Mot de passe admin (défaut : `fincorya2026`) |
 
-> Les variables marquées `sync: false` dans `render.yaml` doivent être
-> définies manuellement. Les autres sont pré-remplies par le Blueprint.
+> `DJANGO_SECRET_KEY` est auto-généré par Render (`generateValue: true`).
+> Les variables marquées `sync: false` doivent être définies manuellement.
 
 ### 3.4. Déploiement initial
 
 Render lance automatiquement :
 
-1. `build.sh` → `pip install`, `collectstatic`, `migrate`
-2. `gunicorn` démarre sur le port Render attribué
-3. Health check sur `/health/` (vérifie la connexion PostgreSQL)
+1. **Détection Python** : lit `runtime.txt` à la racine → Python 3.11.9
+2. **Build** (`./build.sh`) :
+   - `pip install -r requirements.txt`
+   - `python manage.py collectstatic --noinput`
+   - `python manage.py migrate --noinput`
+   - `python manage.py create_admin` → crée `fincoryagroup@gmail.com`
+3. **Pre-deploy** : `python manage.py migrate --noinput`
+4. **Start** : `gunicorn` démarre sur le port Render attribué
+5. **Health check** sur `/health/` (vérifie la connexion PostgreSQL)
 
 Le déploiement est **prêt** quand le health check passe (statut **Live**).
 
@@ -99,29 +112,35 @@ Si vous préférez configurer manuellement :
 2. Nom : `fincorya-db`
 3. Database : `fincorya`, User : `fincorya_app`
 4. Plan : Starter minimum
-5. Noter la **Internal Database URL** fournie
-postgresql://fincorya_app:ByjP6j2cnOETcrZeKIjxox5ibrkry9KX@dpg-dahen195efls73dp0ln0-a/fincorya
+5. Noter les identifiants fournis (host, port, user, password, database)
 
 ### 4.2. Créer le service web
 
 1. **New** → **Web Service**
 2. Connecter le dépôt GitHub
-3. Runtime : **Python 3**
-4. Build Command : `./build.sh`
-5. Start Command : `gunicorn config.wsgi:application --chdir fincorya --bind 0.0.0.0:$PORT --workers 3 --timeout 120`
-6. Health Check Path : `/health/`
-7. Plan : Starter minimum
+3. **Branch** : `Fincorya`
+4. **Runtime** : Python 3 (Render lira `runtime.txt` pour la version exacte)
+5. **Root Directory** : `fincorya`
+6. **Build Command** : `./build.sh`
+7. **Start Command** : `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120 --access-logfile - --error-logfile -`
+8. **Health Check Path** : `/health/`
+9. Plan : Starter minimum
+
+> Ne pas ajouter `--chdir fincorya` : le **Root Directory** place déjà
+> Render dans `fincorya/`.
 
 ### 4.3. Créer le disque persistant
 
 1. Service `fincorya` → **Disks** → **Add Disk**
-2. Nom : `fincorya-media`
-3. Mount Path : `/opt/render/media`
-4. Size : 5 Go
+2. Nom : `fincorya-private-files`
+3. Mount Path : `/var/data`
+4. Size : 10 Go
 
 ### 4.4. Configurer les variables d'environnement
 
-Reproduire la liste du `render.yaml` (section `envVars`).
+Reproduire la liste du `render.yaml` (section `envVars`). Les variables
+`DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` doivent pointer
+vers la base PostgreSQL créée en 4.1.
 
 ---
 
@@ -133,17 +152,29 @@ Reproduire la liste du `render.yaml` (section `envVars`).
 |---|---|---|
 | `ENVIRONMENT` | `production` | Active les garde-fous (DEBUG=False, PostgreSQL requis, MFA obligatoire) |
 | `DEBUG` | `False` | Désactive les pages d'erreur détaillées |
-| `DJANGO_SECRET_KEY` | *(secret)* | Clé de signature Django |
+| `DJANGO_SECRET_KEY` | *(auto-généré)* | Clé de signature Django |
 | `MFA_ENABLED` | `True` | Obligatoire en production |
 | `LOCAL_AUTH_BYPASS` | `False` | Obligatoire en production |
+| `TRUST_PROXY_HEADERS` | `True` | Render termine SSL au proxy |
 | `BUSINESS_TIME_ZONE` | `Europe/Istanbul` | Fuseau métier pour les clôtures |
 | `RENDER_EXTERNAL_HOSTNAME` | *(auto)* | Défini par Render automatiquement |
+| `ALLOWED_HOSTS` | `fincorya.com,www.fincorya.com` | Domaines autorisés |
+| `CSRF_TRUSTED_ORIGINS` | `https://fincorya.com,https://www.fincorya.com` | Origines CSRF autorisées |
 
 ### Base de données
 
+Render fournit la connexion via des variables individuelles (pas `DATABASE_URL`) :
+
 | Variable | Source | Description |
 |---|---|---|
-| `DATABASE_URL` | Auto (Blueprint) | URL de connexion PostgreSQL fournie par Render |
+| `DB_HOST` | Auto (Blueprint) | Hôte PostgreSQL Render |
+| `DB_PORT` | Auto (Blueprint) | Port PostgreSQL (5432) |
+| `DB_NAME` | Auto (Blueprint) | Nom de la base (`fincorya`) |
+| `DB_USER` | Auto (Blueprint) | Utilisateur (`fincorya_app`) |
+| `DB_PASSWORD` | Auto (Blueprint) | Mot de passe PostgreSQL |
+
+> `settings.py` utilise `DB_HOST` en priorité. Si `DB_HOST` est vide,
+> il fallback sur `DATABASE_URL` puis SQLite.
 
 ### Email
 
@@ -161,7 +192,7 @@ Reproduire la liste du `render.yaml` (section `envVars`).
 
 | Variable | Production | Description |
 |---|---|---|
-| `MEDIA_ROOT` | `/opt/render/media` | Disque persistant Render |
+| `MEDIA_ROOT` | `/var/data/media` | Disque persistant Render |
 | `REPORT_RETENTION_DAYS` | `365` | Conservation des exports |
 
 ### Moteur financier
@@ -169,7 +200,7 @@ Reproduire la liste du `render.yaml` (section `envVars`).
 | Variable | Production | Description |
 |---|---|---|
 | `FINANCE_LEDGER_ENABLED` | `False` | Activer **uniquement** après une bascule réconciliée et approuvée |
-| `ADMIN_PASSWORD` | *(secret)* | Surchage le mot de passe admin (défaut : `fincorya2026`) |
+| `ADMIN_PASSWORD` | *(optionnel)* | Surcharge le mot de passe admin (défaut : `fincorya2026`) |
 
 ### Rapports
 
@@ -211,6 +242,17 @@ curl -I https://<votre-app>.onrender.com/static/css/base.css
 # HTTP/1.1 200 OK
 ```
 
+### 6.5. Vérifier la version Python
+
+Dans les logs de build Render, la première ligne doit indiquer :
+
+```
+==> Using Python version 3.11.9
+```
+
+Si Render affiche 3.14.x, vérifier que `runtime.txt` existe **à la racine
+du dépôt** (pas seulement dans `fincorya/`).
+
 ---
 
 ## 7. Création du premier administrateur
@@ -234,7 +276,7 @@ Dans les logs de déploiement Render, vous verrez :
 
 ```
 Administrateur créé : fincoryagroup@gmail.com (Admin FINCORYA)
-Mot de passe appliqué depuis ADMIN_PASSWORD.
+Mot de passe par défaut appliqué. Changez-le dès la première connexion.
 ```
 
 Ou si l'admin existe déjà :
@@ -320,17 +362,18 @@ l'interface FINCORYA :
 
 ## 10. Disque persistant et fichiers
 
-Le disque Render (`/opt/render/media`, 5 Go) stocke :
+Le disque Render (`/var/data`, 10 Go) stocke :
 
-- `private/contributions/` — justificatifs d'apports
-- `private/expenses/` — justificatifs de charges
-- `private/reports/` — exports PDF/XLSX/CSV générés
-- `private/contracts/` — documents contractuels
-- `agents/` — photos d'agents
+- `/var/data/media/private/contributions/` — justificatifs d'apports
+- `/var/data/media/private/expenses/` — justificatifs de charges
+- `/var/data/media/private/reports/` — exports PDF/XLSX/CSV générés
+- `/var/data/media/private/contracts/` — documents contractuels
+- `/var/data/media/agents/` — photos d'agents
 
-Ces fichiers sont servis **uniquement** via des vues authentifiées
-(`receipt_download`, `profile_photo`, `report_download`) — jamais via
-`/media/` public.
+La variable `MEDIA_ROOT` est définie sur `/var/data/media` dans le
+`render.yaml`. Ces fichiers sont servis **uniquement** via des vues
+authentifiées (`receipt_download`, `profile_photo`, `report_download`) —
+jamais via `/media/` public.
 
 ### Sauvegarde
 
@@ -345,8 +388,8 @@ Render ne sauvegarde pas automatiquement les disques. Planifier :
 
 ### Déploiement continu
 
-Si `autoDeploy: true` (défaut dans `render.yaml`), chaque `push` sur
-`main` déclenche :
+Si `autoDeploy: true` (défaut dans `render.yaml`), chaque `push` sur la
+branche **`Fincorya`** déclenche :
 
 1. Build (`build.sh`)
 2. Migrations (`manage.py migrate`)
@@ -384,10 +427,11 @@ Render Starter inclut : CPU, mémoire, temps de réponse moyen.
 | Limite | Détail |
 |---|---|
 | Polices PDF | Arial Narrow indisponible sur Linux ; reportlab utilise Helvetica |
-| Disque 5 Go | Augmenter si les rapports générés dépassent la capacité |
+| Disque 10 Go | Augmenter si les rapports générés dépassent la capacité |
 | Workers gunicorn | 3 par défaut ; augmenter sur plan supérieur |
 | Email SMTP | Configurer un service SMTP (Gmail, SendGrid, etc.) |
 | `confirmed_brief.json` | Contexte historique uniquement, pas d'import automatique |
+| Version Python | `runtime.txt` doit être à la racine du dépôt pour Render |
 
 ---
 
@@ -396,9 +440,6 @@ Render Starter inclut : CPU, mémoire, temps de réponse moyen.
 ```bash
 # État des migrations
 python manage.py showmigrations
-
-# Créer un superutilisateur
-python manage.py shell
 
 # Recréer l'admin initial (idempotent)
 python manage.py create_admin
@@ -415,3 +456,37 @@ python manage.py reconcile_cash
 # Générer des aperçus de rapports
 python manage.py generate_report_previews
 ```
+
+---
+
+## 15. Dépannage
+
+### Render utilise Python 3.14 au lieu de 3.11
+
+`runtime.txt` doit exister **à la racine du dépôt** (pas seulement dans
+`fincorya/`). Vérifier :
+
+```bash
+cat runtime.txt
+# python-3.11.9
+```
+
+Si absent à la racine, le créer et pousser.
+
+### `./build.sh: No such file or directory`
+
+1. Vérifier que `build.sh` est dans `fincorya/` et est exécutable
+2. Vérifier que **Root Directory** = `fincorya` dans Render
+3. Vérifier que la branche déployée est `Fincorya` (pas `main`)
+
+### `connection refused` ou `role does not exist`
+
+Les variables `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`
+ne sont pas définies. Vérifier que le service est lié à la base
+PostgreSQL `fincorya-db` dans le dashboard Render.
+
+### Health check échoue
+
+1. Vérifier que les migrations sont appliquées (logs de build)
+2. Vérifier que `DATABASE_URL` ou `DB_HOST` pointe vers Render PostgreSQL
+3. Tester dans le shell : `python manage.py check`
