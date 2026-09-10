@@ -11,17 +11,16 @@ databases:
     databaseName: fincorya
     user: fincorya_app
     plan: starter
-    ipAllowList: []  # Accessible uniquement depuis les services Render
+    ipAllowList: []
 
 services:
   - type: web
     name: fincorya
     runtime: python
-    rootDir: fincorya
     plan: starter
     buildCommand: "./build.sh"
-    preDeployCommand: "python manage.py migrate --noinput"
-    startCommand: "gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120 --access-logfile - --error-logfile -"
+    preDeployCommand: "cd fincorya && python manage.py migrate --noinput"
+    startCommand: "cd fincorya && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120 --access-logfile - --error-logfile -"
     healthCheckPath: /health/
     autoDeploy: true
     envVars:
@@ -50,7 +49,7 @@ services:
       - key: REPORT_RETENTION_DAYS
         value: "365"
       - key: ADMIN_PASSWORD
-        sync: false  # Mot de passe admin fincoryagroup@gmail.com (défaut: fincorya2026)
+        sync: false
       - key: MEDIA_ROOT
         value: /var/data/media
       - key: DEFAULT_FROM_EMAIL
