@@ -6,12 +6,37 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from apps.accounts.models import Role
 from apps.accounts.views import mfa_required
-from .forms import MonthlyReportForm, OperationReportForm
+from .forms import FinanceReportForm, MonthlyReportForm, OperationReportForm
 from .models import ReportExport
-from .services import generate_monthly_report, generate_operation_report
+from .services import generate_finance_report, generate_monthly_report, generate_operation_report
 
 
 REPORT_ROLES = {Role.ADMIN, Role.AGENT}
+
+
+@mfa_required
+def report_center(request):
+    """One entry point for every role; kinds, periods and scope are decided server-side."""
+    from apps.finance.reporting import allowed_kinds, build_report, can_download
+    if not allowed_kinds(request.user):
+        raise PermissionDenied("Aucun rapport n’est disponible pour votre rôle.")
+    form = FinanceReportForm(request.GET or None, user=request.user)
+    report, error = None, None
+    if request.GET and form.is_valid():
+        data = form.cleaned_data
+        try:
+            if data["format"] == "HTML":
+                report = build_report(user=request.user, kind=data["kind"], preset=data["preset"], anchor=data["anchor"], custom_end=data.get("custom_end"), filters=form.filters())
+            else:
+                export = generate_finance_report(user=request.user, kind=data["kind"], preset=data["preset"], anchor=data["anchor"], custom_end=data.get("custom_end"), format=data["format"], filters=form.filters())
+                return redirect("reports:download", public_id=export.public_id)
+        except (PermissionDenied, ValueError) as exc:
+            error = str(exc)
+        except Exception as exc:  # ValidationError from period parsing
+            error = "; ".join(getattr(exc, "messages", [str(exc)]))
+    exports = ReportExport.objects.filter(requested_by=request.user, kind__startswith="FINANCE_").order_by("-created_at")[:30]
+    template = "reports/_center_result.html" if request.htmx else "reports/center.html"
+    return render(request, template, {"form": form, "report": report, "error": error, "exports": exports, "can_download": can_download(request.user)})
 
 
 @mfa_required

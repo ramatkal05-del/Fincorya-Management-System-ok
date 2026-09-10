@@ -50,6 +50,10 @@ class AccountType(models.TextChoices):
     EXPENSE_PAYABLE = "EXPENSE_PAYABLE", _("Charges à payer")
     DISTRIBUTION_PAYABLE = "DISTRIBUTION_PAYABLE", _("Distributions à payer")
     PARTNER_ADVANCE = "PARTNER_ADVANCE", _("Avances personnelles partenaire")
+    INVESTOR_FUNDS = "INVESTOR_FUNDS", _("Fonds investisseurs")
+    PARTNER_GUARANTEE = "PARTNER_GUARANTEE", _("Garanties partenaires")
+    RETAINED_EARNINGS = "RETAINED_EARNINGS", _("Résultats non distribués")
+    FX_DIFFERENCE = "FX_DIFFERENCE", _("Écarts de change")
 
 
 class AccountNature(models.TextChoices):
@@ -353,3 +357,207 @@ class AccountReconciliation(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["run", "account"], name="unique_reconciliation_account_run")]
+
+
+class FundOrigin(models.TextChoices):
+    SHAREHOLDER = "SHAREHOLDER", _("Apport actionnaire")
+    INVESTOR = "INVESTOR", _("Investissement")
+    PARTNER_GUARANTEE = "PARTNER_GUARANTEE", _("Garantie partenaire")
+
+
+class FundContribution(models.Model):
+    """One received contribution, recorded once, with its economic origin and its receiving account."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    client_key = models.CharField(max_length=120, unique=True)
+    origin = models.CharField(max_length=20, choices=FundOrigin.choices)
+    stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="contributions")
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.ForeignKey("pricing.Currency", on_delete=models.RESTRICT)
+    received_on = models.DateField()
+    receiving_account = models.ForeignKey(FinancialAccount, on_delete=models.RESTRICT, related_name="received_contributions")
+    # True when the funds were already part of the reconciled opening balances: the entry reclassifies
+    # opening equity into the party's account and never touches treasury.
+    from_opening_balances = models.BooleanField(default=False)
+    external_reference = models.CharField(max_length=120, blank=True)
+    evidence = models.FileField(upload_to="private/contributions/%Y/%m/", blank=True)
+    note = models.CharField(max_length=255, blank=True)
+    batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="contribution")
+    created_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, related_name="contributions_recorded")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-received_on", "-id"]
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="contribution_amount_positive")]
+
+
+class TransferStatus(models.TextChoices):
+    INITIATED = "INITIATED", _("En transit")
+    CONFIRMED = "CONFIRMED", _("Confirmé")
+    CANCELLED = "CANCELLED", _("Annulé")
+
+
+class InternalTransfer(models.Model):
+    """Movement of funds between two internal accounts; the total is preserved excluding fees."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    client_key = models.CharField(max_length=120, unique=True)
+    source = models.ForeignKey(FinancialAccount, on_delete=models.RESTRICT, related_name="transfers_out")
+    destination = models.ForeignKey(FinancialAccount, on_delete=models.RESTRICT, related_name="transfers_in")
+    currency = models.ForeignKey("pricing.Currency", on_delete=models.RESTRICT)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    fee = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    status = models.CharField(max_length=10, choices=TransferStatus.choices, default=TransferStatus.INITIATED)
+    note = models.CharField(max_length=255, blank=True)
+    initiated_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, related_name="transfers_initiated")
+    initiated_at = models.DateTimeField()
+    confirmed_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, null=True, blank=True, related_name="transfers_confirmed")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    initiation_batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="transfer_initiation")
+    settlement_batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="transfer_settlement")
+
+    class Meta:
+        ordering = ["-initiated_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="transfer_amount_positive"),
+            models.CheckConstraint(condition=models.Q(fee__gte=0), name="transfer_fee_non_negative"),
+            models.CheckConstraint(condition=~models.Q(source=models.F("destination")), name="transfer_distinct_accounts"),
+        ]
+
+
+class PartnerGuarantee(models.Model):
+    """Guarantee terms of a partner; the guarantee balance itself lives in the ledger."""
+    stakeholder = models.OneToOneField("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="guarantee")
+    currency = models.ForeignKey("pricing.Currency", on_delete=models.RESTRICT)
+    per_operation_ceiling = models.DecimalField(max_digits=18, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    updated_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(per_operation_ceiling__gt=0), name="guarantee_ceiling_positive")]
+
+
+class DistributionMode(models.TextChoices):
+    EQUAL_SHARES = "EQUAL_SHARES", _("Parts égales entre les actionnaires sélectionnés")
+    CAPITAL_PROPORTIONAL = "CAPITAL_PROPORTIONAL", _("Proportionnelle aux apports en capital")
+    RULE_PERCENT = "RULE_PERCENT", _("Pourcentages des règles datées (historique)")
+
+
+class DistributionPolicy(models.Model):
+    """Dated, immutable distribution rule. Closed periods keep the policy that applied to them."""
+    mode = models.CharField(max_length=24, choices=DistributionMode.choices)
+    effective_from = models.DateField(unique=True)
+    notes = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    objects = ServiceOnlyQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-effective_from"]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Une politique de distribution est figée ; créez une nouvelle version datée.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les politiques de distribution sont conservées.")
+
+
+class DistributionPolicyShare(models.Model):
+    """Shareholders covered by a policy and, for fixed modes, their percentage (must total 100)."""
+    policy = models.ForeignKey(DistributionPolicy, on_delete=models.CASCADE, related_name="shares")
+    stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="distribution_shares")
+    percent = models.DecimalField(max_digits=7, decimal_places=4)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["policy", "stakeholder"], name="unique_policy_shareholder"),
+            models.CheckConstraint(condition=models.Q(percent__gte=0, percent__lte=100), name="policy_share_percent_valid"),
+        ]
+
+
+class PartialMonthRule(models.TextChoices):
+    PRORATA = "PRORATA", _("Prorata des jours")
+    FULL = "FULL", _("Mois complet dû")
+    NONE = "NONE", _("Rien n’est dû pour un mois incomplet")
+
+
+class LossMonthRule(models.TextChoices):
+    PAY = "PAY", _("Rémunération due même en mois déficitaire")
+    SUSPEND = "SUSPEND", _("Rémunération suspendue en mois déficitaire")
+
+
+class RemunerationTerms(models.Model):
+    """Contractual parameters that the fixed monthly remuneration rule alone does not define."""
+    stakeholder = models.OneToOneField("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="remuneration_terms")
+    contract_start = models.DateField(null=True, blank=True)
+    contract_end = models.DateField(null=True, blank=True)
+    partial_month = models.CharField(max_length=8, choices=PartialMonthRule.choices, blank=True)
+    loss_month = models.CharField(max_length=8, choices=LossMonthRule.choices, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+    updated_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class CurrencyConversion(models.Model):
+    """A conversion keeps both amounts and the rate applied; the realised difference is isolated."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    client_key = models.CharField(max_length=120, unique=True)
+    source = models.ForeignKey(FinancialAccount, on_delete=models.RESTRICT, related_name="conversions_out")
+    destination = models.ForeignKey(FinancialAccount, on_delete=models.RESTRICT, related_name="conversions_in")
+    amount_source = models.DecimalField(max_digits=18, decimal_places=2)
+    amount_destination = models.DecimalField(max_digits=18, decimal_places=2)
+    rate_applied = models.DecimalField(max_digits=18, decimal_places=6)
+    reference_rate = models.DecimalField(max_digits=18, decimal_places=6, null=True, blank=True)
+    fee_source = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    realized_difference = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    note = models.CharField(max_length=255, blank=True)
+    batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="conversion")
+    created_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount_source__gt=0, amount_destination__gt=0, rate_applied__gt=0), name="conversion_amounts_positive"),
+            models.CheckConstraint(condition=models.Q(fee_source__gte=0), name="conversion_fee_non_negative"),
+        ]
+
+
+class RequestKind(models.TextChoices):
+    REINVEST_PROFIT = "REINVEST_PROFIT", _("Réinvestir un bénéfice")
+    WITHDRAW_PROFIT = "WITHDRAW_PROFIT", _("Retirer un bénéfice")
+    INCREASE_INVESTMENT = "INCREASE_INVESTMENT", _("Augmenter l’investissement")
+    WITHDRAW_INVESTMENT = "WITHDRAW_INVESTMENT", _("Retirer l’investissement")
+    INCREASE_GUARANTEE = "INCREASE_GUARANTEE", _("Augmenter la garantie")
+    CONVERT_COMMISSION = "CONVERT_COMMISSION", _("Convertir des commissions en garantie")
+
+
+class RequestStatus(models.TextChoices):
+    SUBMITTED = "SUBMITTED", _("Soumise")
+    APPROVED = "APPROVED", _("Validée")
+    REJECTED = "REJECTED", _("Refusée")
+    EXECUTED = "EXECUTED", _("Exécutée")
+
+
+class StakeholderRequest(models.Model):
+    """A request from a shareholder, investor or partner. Nothing moves before validation and execution."""
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="requests")
+    kind = models.CharField(max_length=24, choices=RequestKind.choices)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.ForeignKey("pricing.Currency", on_delete=models.RESTRICT)
+    distribution = models.ForeignKey("profits.Distribution", on_delete=models.RESTRICT, null=True, blank=True, related_name="requests")
+    note = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=10, choices=RequestStatus.choices, default=RequestStatus.SUBMITTED)
+    submitted_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, related_name="requests_submitted")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, null=True, blank=True, related_name="requests_decided")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_comment = models.CharField(max_length=255, blank=True)
+    executed_at = models.DateTimeField(null=True, blank=True)
+    execution_batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="executed_request")
+
+    class Meta:
+        ordering = ["-submitted_at"]
+        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="request_amount_positive")]

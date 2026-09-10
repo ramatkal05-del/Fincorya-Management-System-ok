@@ -1,21 +1,25 @@
 import uuid
 
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.accounts.permissions import require_finance_access
 from apps.accounts.views import mfa_required
 from apps.audit.services import record
 
-from .forms import (BatchForm, CountForm, DistributionForm, EntryFormSet, FinancialAccountForm, FinancialPeriodForm,
-                    PartyForm, PaymentForm, ReasonForm, RoleForm, RuleForm, ServiceForm)
-from .models import (AccountReconciliation, EconomicRule, FinancialAccount, FinancialPeriod, ImportRow, JournalBatch,
-                     ServiceCatalog)
+from .forms import (AgentCashForm, BatchForm, ContributionForm, ConversionForm, CountForm, DecisionForm, DistributionForm,
+                    EntryFormSet, ExecutionForm, FinancialAccountForm, FinancialPeriodForm, GuaranteeForm, PartyForm,
+                    PartyOnboardingForm, PaymentForm, PolicyForm, ReasonForm, RemunerationTermsForm, RoleForm, RuleForm,
+                    ServiceForm, StakeholderRequestForm, TransferForm)
+from .models import (AccountReconciliation, CurrencyConversion, DistributionPolicy, DistributionPolicyShare, EconomicRule,
+                     FinancialAccount, FinancialPeriod, FundContribution, ImportRow, InternalTransfer, JournalBatch,
+                     PartnerGuarantee, RemunerationTerms, ServiceCatalog, StakeholderRequest)
 from .services import reconcile_account
 
 
@@ -79,6 +83,13 @@ def workspace(request, section):
         "expenses": ("Charges reconnues et paiements", Expense.objects.select_related("currency").prefetch_related("payments").filter(recognition_batch__isnull=False)),
         "profits": ("Résultat et propositions de distribution", ProfitPeriod.objects.filter(finance_period__isnull=False).prefetch_related("allocations")),
         "distributions": ("Distributions approuvées", Distribution.objects.select_related("stakeholder", "allocation__period__currency").filter(approval_batch__isnull=False)),
+        "contributions": ("Apports reçus", FundContribution.objects.select_related("stakeholder", "currency", "receiving_account", "batch")),
+        "transfers": ("Transferts internes et fonds en transit", InternalTransfer.objects.select_related("source", "destination", "currency", "initiated_by")),
+        "requests": ("Demandes des parties prenantes", StakeholderRequest.objects.select_related("stakeholder", "currency", "distribution")),
+        "guarantees": ("Garanties et plafonds partenaires", PartnerGuarantee.objects.select_related("stakeholder", "currency")),
+        "policies": ("Politiques de distribution datées", DistributionPolicy.objects.prefetch_related("shares__stakeholder").all()),
+        "conversions": ("Conversions et écarts de change", CurrencyConversion.objects.select_related("source", "destination", "batch")),
+        "remunerations": ("Conditions contractuelles de rémunération", RemunerationTerms.objects.select_related("stakeholder", "updated_by")),
     }
     if section not in definitions:
         raise Http404
@@ -283,6 +294,208 @@ def partner_detail(request, pk):
     payments = LedgerEntry.objects.filter(account__economic_owner=party, account__account_type="PARTNER_PAYABLE",
         side="DEBIT", batch__event_type="PARTNER_PAYMENT", batch__status__in=["POSTED", "REVERSED"]).select_related("batch", "currency").order_by("-batch__effective_at")
     return render(request, "finance/partner.html", {"party": party, "accounts": rows, "operations": operations[:100], "payments": payments, "policy": policy})
+
+
+def _run(form, action):
+    """Run a service call from a valid form; surface business errors on the form."""
+    try:
+        return action()
+    except ValidationError as exc:
+        form.add_error(None, "; ".join(exc.messages))
+        return None
+
+
+@mfa_required
+def contribution_create(request):
+    require_finance_access(request.user, "approve")
+    from .funds import record_contribution
+    form = ContributionForm(request.POST or None, initial={"client_key": uuid.uuid4().hex})
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data.copy()
+        data["stakeholder_id"], data["account_id"] = data["stakeholder_id"].pk, data["account_id"].pk
+        if _run(form, lambda: record_contribution(actor=request.user, **data)):
+            messages.success(request, "Apport enregistré une seule fois et affecté à son compte de réception.")
+            return redirect("finance:workspace", section="contributions")
+    return render(request, "finance/form.html", {"title": "Enregistrer un apport reçu", "form": form, "confirm": "Confirmez l’encaissement : une écriture définitive sera publiée."})
+
+
+@mfa_required
+def transfer_create(request):
+    require_finance_access(request.user, "prepare")
+    from .funds import initiate_transfer
+    form = TransferForm(request.POST or None, initial={"client_key": uuid.uuid4().hex})
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data.copy()
+        data["source_id"], data["destination_id"] = data["source_id"].pk, data["destination_id"].pk
+        if _run(form, lambda: initiate_transfer(actor=request.user, **data)):
+            messages.success(request, "Transfert initié : les fonds sont en transit jusqu’à confirmation de réception.")
+            return redirect("finance:workspace", section="transfers")
+    return render(request, "finance/form.html", {"title": "Transfert interne", "form": form, "confirm": "Les fonds quittent la source immédiatement et restent en transit."})
+
+
+@require_POST
+@mfa_required
+def transfer_action(request, pk, action):
+    require_finance_access(request.user, "approve")
+    from .funds import cancel_transfer, confirm_transfer
+    try:
+        if action == "confirm":
+            confirm_transfer(actor=request.user, transfer_id=pk)
+            messages.success(request, "Réception confirmée ; les fonds sont sortis du transit.")
+        elif action == "cancel":
+            form = ReasonForm(request.POST)
+            if not form.is_valid():
+                raise ValidationError("Un motif d’annulation est requis.")
+            cancel_transfer(actor=request.user, transfer_id=pk, reason=form.cleaned_data["reason"])
+            messages.success(request, "Transfert annulé ; les fonds sont revenus à la source.")
+        else:
+            raise Http404
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return redirect("finance:workspace", section="transfers")
+
+
+@mfa_required
+def guarantee_form(request):
+    require_finance_access(request.user, "administer")
+    from .funds import set_partner_guarantee
+    form = GuaranteeForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data.copy()
+        data["stakeholder_id"] = data["stakeholder_id"].pk
+        if _run(form, lambda: set_partner_guarantee(actor=request.user, **data)):
+            return redirect("finance:workspace", section="guarantees")
+    return render(request, "finance/form.html", {"title": "Garantie et plafond par opération", "form": form})
+
+
+@mfa_required
+def policy_create(request):
+    require_finance_access(request.user, "administer")
+    form = PolicyForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        def save():
+            from django.db import transaction
+            data = form.cleaned_data
+            with transaction.atomic():
+                policy = DistributionPolicy.objects.create(mode=data["mode"], effective_from=data["effective_from"],
+                                                           notes=data["notes"], created_by=request.user)
+                for stakeholder_id, percent in (data.get("shares") or {}).items():
+                    DistributionPolicyShare.objects.create(policy=policy, stakeholder_id=stakeholder_id, percent=percent)
+            record(actor=request.user, action="DISTRIBUTION_POLICY_CREATE", instance=policy,
+                   after={"mode": policy.mode, "effective_from": str(policy.effective_from), "shares": len(data.get("shares") or {})})
+            return policy
+        if _run(form, save):
+            return redirect("finance:workspace", section="policies")
+    return render(request, "finance/form.html", {"title": "Nouvelle politique de distribution datée", "form": form,
+        "confirm": "La politique est figée dès sa création ; les périodes déjà clôturées gardent leur propre politique."})
+
+
+@mfa_required
+def party_onboarding(request):
+    require_finance_access(request.user, "administer")
+    from .funds import onboard_party
+    form = PartyOnboardingForm(request.POST or None, request.FILES or None, initial={"client_key": uuid.uuid4().hex})
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data
+        if _run(form, lambda: onboard_party(actor=request.user, party_type=data["party_type"], identity=form.identity(),
+                                            currency=data.get("currency"), per_operation_ceiling=data.get("per_operation_ceiling"),
+                                            deposit=form.deposit())):
+            messages.success(request, "Partie créée manuellement ; aucun montant n’a été prérempli.")
+            return redirect("finance:workspace", section="parties")
+    return render(request, "finance/form.html", {"title": "Créer une partie (partenaire, investisseur, actionnaire)",
+        "form": form, "confirm": "Tous les montants saisis doivent correspondre à des fonds réellement reçus ou repris."})
+
+
+@mfa_required
+def remuneration_terms(request):
+    require_finance_access(request.user, "administer")
+    form = RemunerationTermsForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        def save():
+            terms = form.save(commit=False)
+            terms.updated_by = request.user
+            terms.save()
+            record(actor=request.user, action="REMUNERATION_TERMS", instance=terms)
+            return terms
+        if _run(form, save):
+            return redirect("finance:workspace", section="remunerations")
+    return render(request, "finance/form.html", {"title": "Conditions contractuelles de rémunération", "form": form,
+        "confirm": "Sans règles explicites de mois incomplet ou déficitaire, la clôture du mois concerné sera bloquée."})
+
+
+@mfa_required
+def agent_cash_open(request):
+    policy = require_finance_access(request.user, "prepare")
+    from .funds import open_agent_cash
+    if not (policy.administer or policy.prepare):
+        raise PermissionDenied
+    form = AgentCashForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        if _run(form, lambda: open_agent_cash(actor=request.user, agent=form.cleaned_data["agent"], currency=form.cleaned_data["currency"])):
+            messages.success(request, "Caisse agent créée sans solde ; l’allocation de fonds reste un mouvement séparé.")
+            return redirect("finance:overview")
+    return render(request, "finance/form.html", {"title": "Ouvrir une caisse agent", "form": form})
+
+
+@mfa_required
+def conversion_create(request):
+    require_finance_access(request.user, "approve")
+    from .funds import record_conversion
+    form = ConversionForm(request.POST or None, initial={"client_key": uuid.uuid4().hex})
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data.copy()
+        data["source_id"], data["destination_id"] = data["source_id"].pk, data["destination_id"].pk
+        if _run(form, lambda: record_conversion(actor=request.user, **data)):
+            messages.success(request, "Conversion enregistrée ; l’écart réalisé est isolé hors du distribuable.")
+            return redirect("finance:workspace", section="conversions")
+    return render(request, "finance/form.html", {"title": "Conversion de devises", "form": form,
+        "confirm": "L’écart de change réalisé est comptabilisé séparément et exclu du montant distribuable."})
+
+
+@mfa_required
+def request_decide(request, pk):
+    require_finance_access(request.user, "approve")
+    from .funds import decide_request, execute_request
+    row = get_object_or_404(StakeholderRequest.objects.select_related("stakeholder", "currency"), pk=pk)
+    decision, execution = DecisionForm(request.POST or None, prefix="d"), ExecutionForm(request.POST or None, prefix="e")
+    if request.method == "POST":
+        if request.POST.get("action") == "decide" and decision.is_valid():
+            if _run(decision, lambda: decide_request(actor=request.user, request_id=pk, **decision.cleaned_data)):
+                return redirect("finance:request_decide", pk=pk)
+        elif request.POST.get("action") == "execute" and execution.is_valid():
+            account = execution.cleaned_data.get("account_id")
+            if _run(execution, lambda: execute_request(actor=request.user, request_id=pk, account_id=account.pk if account else None)):
+                messages.success(request, "Demande exécutée ; l’écriture est publiée une seule fois.")
+                return redirect("finance:workspace", section="requests")
+    return render(request, "finance/request.html", {"row": row, "decision": decision, "execution": execution, "policy": require_finance_access(request.user, "view_all")})
+
+
+@mfa_required
+def party_space(request):
+    """Shareholder, investor or partner: own situation, requests, and (shareholder) global read-only view."""
+    from apps.accounts.permissions import finance_policy, linked_party
+    from .funds import submit_request
+    from .reporting import PARTY_KIND, build_report, can_download
+    policy = finance_policy(request.user)
+    party = linked_party(request.user)
+    if party is None:
+        raise PermissionDenied("Aucune partie prenante n’est liée à votre compte ; contactez l’administrateur.")
+    form = StakeholderRequestForm(request.POST or None, party=party)
+    if request.method == "POST" and form.is_valid():
+        data = form.cleaned_data.copy()
+        if data.get("distribution_id") is not None:
+            data["distribution_id"] = data["distribution_id"].pk
+        else:
+            data.pop("distribution_id", None)
+        if _run(form, lambda: submit_request(actor=request.user, **data)):
+            messages.success(request, "Demande soumise ; elle n’agit qu’après validation et exécution par l’administration.")
+            return redirect("finance:party_space")
+    situation = build_report(user=request.user, kind=PARTY_KIND[party.type], preset="MONTH", anchor=timezone.localdate())
+    global_view = build_report(user=request.user, kind="ACTIVITY", preset="MONTH", anchor=timezone.localdate()) if policy.global_read_only else None
+    requests_rows = StakeholderRequest.objects.filter(stakeholder=party).select_related("currency")[:50]
+    context = {"party": party, "form": form, "situation": situation, "global_view": global_view, "requests": requests_rows,
+               "refreshed_at": timezone.now(), "can_download": can_download(request.user)}
+    return render(request, "finance/_party_situation.html" if request.htmx else "finance/party_space.html", context)
 
 
 @mfa_required

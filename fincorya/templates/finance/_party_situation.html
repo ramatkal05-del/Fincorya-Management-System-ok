@@ -1,0 +1,19 @@
+{% load report_cells %}
+<section class="panel report-card">
+  <div class="panel-heading"><div><p class="eyebrow">{{ situation.period.label }}</p><h2>Ma situation</h2></div><span class="muted">Actualisé à {{ refreshed_at|date:'H:i' }}</span></div>
+  {% for section in situation.sections %}
+  <div class="table-wrap"><table><caption>{{ section.title }}</caption>
+    <thead><tr>{% for column in section.columns %}<th scope="col"{% if forloop.counter0 in section.numeric %} class="money"{% endif %}>{{ column }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in section.rows %}<tr>{% for value in row %}<td{% if forloop.counter0 in section.numeric %} class="money"{% endif %}>{{ value|report_cell }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="{{ section.columns|length }}">Aucune donnée sur la période.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endfor %}
+  {% if global_view %}
+  <div class="panel-heading"><div><p class="eyebrow">Consultation globale (lecture seule)</p><h2>Activité FINCORYA du mois</h2></div></div>
+  {% with section=global_view.sections.0 %}
+  <div class="table-wrap"><table><caption>{{ section.title }}</caption>
+    <thead><tr>{% for column in section.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in section.rows %}<tr>{% for value in row %}<td{% if forloop.counter0 in section.numeric %} class="money"{% endif %}>{{ value|report_cell }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="{{ section.columns|length }}">Aucune opération ce mois-ci.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endwith %}
+  {% endif %}
+</section>

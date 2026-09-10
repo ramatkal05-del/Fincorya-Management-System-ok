@@ -16,17 +16,24 @@ def effective_rule(party, kind, on_date):
     return rule
 
 
-def counterpart(currency, account_type, *, party=None):
-    nature = {
-        AccountType.CAPITAL: AccountNature.EQUITY, AccountType.COMMISSION: AccountNature.INCOME,
-        AccountType.EXPENSE: AccountNature.EXPENSE, AccountType.PARTNER_PAYABLE: AccountNature.LIABILITY,
-        AccountType.EXPENSE_PAYABLE: AccountNature.LIABILITY, AccountType.DISTRIBUTION_PAYABLE: AccountNature.LIABILITY,
-        AccountType.TRANSIT: AccountNature.LIABILITY, AccountType.PARTNER_ADVANCE: AccountNature.LIABILITY,
-        AccountType.ADJUSTMENT: AccountNature.EQUITY,
-    }[account_type]
-    code = f"{account_type}-{currency.code}" + (f"-{party.pk}" if party else "")
+COUNTERPART_NATURE = {
+    AccountType.CAPITAL: AccountNature.EQUITY, AccountType.COMMISSION: AccountNature.INCOME,
+    AccountType.EXPENSE: AccountNature.EXPENSE, AccountType.PARTNER_PAYABLE: AccountNature.LIABILITY,
+    AccountType.EXPENSE_PAYABLE: AccountNature.LIABILITY, AccountType.DISTRIBUTION_PAYABLE: AccountNature.LIABILITY,
+    AccountType.TRANSIT: AccountNature.LIABILITY, AccountType.PARTNER_ADVANCE: AccountNature.LIABILITY,
+    AccountType.ADJUSTMENT: AccountNature.EQUITY, AccountType.INVESTOR_FUNDS: AccountNature.LIABILITY,
+    AccountType.PARTNER_GUARANTEE: AccountNature.LIABILITY, AccountType.RETAINED_EARNINGS: AccountNature.EQUITY,
+    # FX effects stay outside the operating result until the admin confirms their treatment.
+    AccountType.FX_DIFFERENCE: AccountNature.EQUITY,
+}
+
+
+def counterpart(currency, account_type, *, party=None, category=""):
+    nature = COUNTERPART_NATURE[account_type]
+    code = f"{account_type}-{currency.code}" + (f"-{category}" if category else "") + (f"-{party.pk}" if party else "")
+    label = f"{AccountType(account_type).label} {category.replace('_', ' ').lower() if category else ''} {party.name if party else ''}"
     account, _ = FinancialAccount.objects.get_or_create(code=code, defaults={
-        "name": f"{AccountType(account_type).label} {party.name if party else ''}".strip(),
+        "name": " ".join(label.split()),
         "account_type": account_type, "nature": nature, "currency": currency, "economic_owner": party})
     if account.currency_id != currency.pk or account.nature != nature or account.economic_owner_id != (party.pk if party else None):
         raise ValidationError("Compte de contrepartie incompatible.")
@@ -52,6 +59,10 @@ def mapped_cash(legacy):
     try:
         return FinancialAccount.objects.get(**{field: legacy})
     except FinancialAccount.DoesNotExist as exc:
+        if field == "legacy_cash_account" and not legacy.balance and not legacy.movements.exists():
+            # An empty agent box created after the cutover carries no money: link it now, with no entry.
+            from .funds import open_agent_cash
+            return open_agent_cash(actor=legacy.agent, agent=legacy.agent, currency=legacy.currency, global_account=legacy.global_account, system=True)
         raise ValidationError("Cette caisse n’a pas de reprise réconciliée.") from exc
 
 
@@ -77,16 +88,21 @@ def record_operation(operation, actor):
         rule = effective_rule(attribution.stakeholder, "COMMISSION", business_date(operation.created_at))
         if not rule:
             raise ValidationError("La commission partenaire exige une règle à date d’effet confirmée.")
+        # The partner share is computed on the gross commission only; the supplier
+        # fee below is a FINCORYA charge and never reduces the 60/40 base.
         partner_fee = (operation.fee * rule.value / 100).quantize(Decimal("0.01"))
         attribution.share_percent = rule.value
         attribution.save(update_fields=["share_percent"])
+    supplier_fee = operation.supplier_fee or Decimal("0")
     if operation.type == "SENT_TRANSFER":
-        lines = [line(account, "DEBIT", operation.amount + operation.fee), line(transit, "CREDIT", operation.amount)]
+        lines = [line(account, "DEBIT", operation.amount + operation.fee - supplier_fee), line(transit, "CREDIT", operation.amount)]
     else:
-        lines = [line(transit, "DEBIT", operation.amount), line(account, "CREDIT", operation.amount - operation.fee)]
+        lines = [line(transit, "DEBIT", operation.amount), line(account, "CREDIT", operation.amount - operation.fee + supplier_fee)]
     lines.append(line(income, "CREDIT", operation.fee - partner_fee))
     if partner_fee:
         lines.append(line(counterpart(operation.currency, AccountType.PARTNER_PAYABLE, party=attribution.stakeholder), "CREDIT", partner_fee))
+    if supplier_fee:
+        lines.append(line(counterpart(operation.currency, AccountType.EXPENSE, category="SUPPLIER_FEE"), "DEBIT", supplier_fee))
     result = record_event(actor=actor, source=operation, event="OPERATION", effective_at=operation.created_at, lines=lines)
     operation.account.refresh_from_db()
     _assert_projection(account, operation.account)
@@ -142,7 +158,7 @@ def recognize_expense(expense, actor):
     if when < active_cutover().cutover_at:
         raise ValidationError("Charge antérieure à la bascule : reprise spécifique requise.")
     batch = record_event(actor=actor, source=expense, event="EXPENSE_RECOGNITION", effective_at=when,
-        lines=[line(counterpart(expense.currency, AccountType.EXPENSE), "DEBIT", expense.amount),
+        lines=[line(counterpart(expense.currency, AccountType.EXPENSE, category=expense.category), "DEBIT", expense.amount),
                line(counterpart(expense.currency, AccountType.EXPENSE_PAYABLE, party=expense.stakeholder), "CREDIT", expense.amount)])
     expense.recognition_batch = batch
     expense.save(update_fields=["recognition_batch"])
@@ -215,16 +231,21 @@ def pay_partner(*, party_id, account_id, amount, actor, idempotency_key):
 
 
 def _project_payment(cash, amount, actor, note):
+    _project_cash(cash, "OUT", amount, actor, note)
+
+
+def _project_cash(cash, direction, amount, actor, note):
     # Compatibility projection, never an independent financial event.
     if cash.legacy_cash_account_id:
         from apps.cash.services import apply_movement
         legacy = cash.legacy_cash_account
         legacy.refresh_from_db()
-        apply_movement(account=legacy, direction="OUT", amount=amount, movement_type="ADJUSTMENT", actor=actor, note=note)
+        apply_movement(account=legacy, direction=direction, amount=amount, movement_type="ADJUSTMENT", actor=actor, note=note)
         _assert_projection(cash, legacy)
     elif cash.legacy_global_account_id:
         from apps.cash.services import _apply_global_movement
         legacy = cash.legacy_global_account
         legacy.refresh_from_db()
-        _apply_global_movement(global_account=legacy, direction="OUT", amount=amount, movement_type="CAPITAL_OUT", actor=actor, note=note)
+        _apply_global_movement(global_account=legacy, direction=direction, amount=amount,
+                               movement_type="CAPITAL_OUT" if direction == "OUT" else "CAPITAL_IN", actor=actor, note=note)
         _assert_projection(cash, legacy)

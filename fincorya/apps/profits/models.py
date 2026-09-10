@@ -21,6 +21,8 @@ class ProfitPeriod(models.Model):
     gross_fees = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     deductible_expenses = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     net_profit = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    prior_losses = models.DecimalField(max_digits=18, decimal_places=2, default=0)
+    distributable = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     snapshot = models.JSONField(default=dict)
     status = models.CharField(max_length=10, choices=ProfitStatus.choices, default=ProfitStatus.DRAFT)
     calculated_by = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True)

@@ -1,0 +1,30 @@
+{% extends "app_base.html" %}
+{% block title %}Demande #{{ row.pk }} — FINCORYA{% endblock %}
+{% block context_name %}Finance{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">Demande {{ row.get_status_display|lower }}</p><h1>{{ row.stakeholder.name }} · {{ row.get_kind_display }}</h1><p>{{ row.amount }} {{ row.currency.code }} · soumise le {{ row.submitted_at }} par {{ row.submitted_by.email }}</p></div></header>
+{% include "finance/_nav.html" %}
+<div class="workflow-grid">
+<section class="panel"><h2>Détail</h2>
+<dl class="report-meta">
+<div><dt>Partie</dt><dd>{{ row.stakeholder.name }} ({{ row.stakeholder.get_type_display }})</dd></div>
+<div><dt>Montant</dt><dd>{{ row.amount }} {{ row.currency.code }}</dd></div>
+{% if row.distribution %}<div><dt>Distribution</dt><dd>{{ row.distribution.allocation.period.start_date }} — {{ row.distribution.amount }} {{ row.currency.code }} ({{ row.distribution.get_status_display }})</dd></div>{% endif %}
+<div><dt>Précisions</dt><dd>{{ row.note|default:'—' }}</dd></div>
+{% if row.decided_at %}<div><dt>Décision</dt><dd>{{ row.get_status_display }} le {{ row.decided_at }} par {{ row.decided_by.email }} · {{ row.decision_comment|default:'sans commentaire' }}</dd></div>{% endif %}
+{% if row.execution_batch %}<div><dt>Écriture</dt><dd><a href="{% url 'finance:batch' row.execution_batch_id %}">Lot #{{ row.execution_batch_id }}</a> · exécutée le {{ row.executed_at }}</dd></div>{% endif %}
+</dl></section>
+<section class="panel">
+{% if row.status == 'SUBMITTED' and policy.approve %}
+<h2>Décision</h2>
+<form method="post" class="form-stack" novalidate onsubmit="return confirm('Confirmer cette décision ?')">{% csrf_token %}<input type="hidden" name="action" value="decide">{% include "_form_fields.html" with form=decision %}<div class="button-row"><button class="button button-primary">Enregistrer la décision</button></div></form>
+{% elif row.status == 'APPROVED' and policy.approve %}
+<h2>Exécution</h2>
+<p class="muted">L’exécution publie l’écriture une seule fois. Un compte de trésorerie est requis pour un versement, un retrait ou un encaissement.</p>
+<form method="post" class="form-stack" novalidate onsubmit="return confirm('Exécuter {{ row.amount }} {{ row.currency.code }} pour {{ row.stakeholder.name|escapejs }} ?')">{% csrf_token %}<input type="hidden" name="action" value="execute">{% include "_form_fields.html" with form=execution %}<div class="button-row"><button class="button button-primary">Exécuter</button></div></form>
+{% else %}
+<div class="empty-state compact"><h2>Aucune action</h2><p>Cette demande est {{ row.get_status_display|lower }}.</p></div>
+{% endif %}
+</section>
+</div>
+{% endblock %}

@@ -47,6 +47,7 @@ class Operation(models.Model):
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     fee = models.DecimalField(max_digits=12, decimal_places=2)
     fee_auto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name=_("Frais calculé (avant réduction)"))
+    supplier_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name=_("Frais fournisseur (charge FINCORYA)"))
     rate_to_usd = models.DecimalField(max_digits=14, decimal_places=6)
     amount_usd = models.DecimalField(max_digits=16, decimal_places=2)
     fee_usd = models.DecimalField(max_digits=12, decimal_places=2)
@@ -65,6 +66,7 @@ class Operation(models.Model):
         constraints = [
             models.CheckConstraint(condition=models.Q(amount__gt=0), name="operation_amount_positive"),
             models.CheckConstraint(condition=models.Q(fee__gte=0), name="operation_fee_non_negative"),
+            models.CheckConstraint(condition=models.Q(supplier_fee__gte=0), name="operation_supplier_fee_non_negative"),
             models.CheckConstraint(condition=models.Q(rate_to_usd__gt=0), name="operation_rate_positive"),
         ]
         indexes = [

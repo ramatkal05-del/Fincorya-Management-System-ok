@@ -76,6 +76,23 @@ def _pricing(*, account, amount, tariff_schedule, manual_fee, actor, fee_justifi
     }
 
 
+def _supplier_fee(value):
+    fee = Decimal(value or 0).quantize(Decimal("0.01"))
+    if fee < 0:
+        raise ValidationError(_("Le frais fournisseur ne peut pas être négatif."))
+    return fee
+
+
+def _attach_partner(operation, stakeholder):
+    """Bind a partner to the operation after its per-operation ceiling has been checked."""
+    if stakeholder is None:
+        return
+    from apps.finance.funds import assert_partner_ceiling
+    from apps.stakeholders.models import PartnerOperation
+    assert_partner_ceiling(stakeholder, operation)
+    PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+
+
 def _notify_operation(operation, actor, action):
     recipients = {actor}
     from apps.accounts.models import User
@@ -111,7 +128,8 @@ def _complete_request(request, operation):
 @ledger_atomic
 def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                           manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                          service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
+                          service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
+                          supplier_fee=None) -> Operation:
     """Register a FINCORYA sent transfer and credit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -122,24 +140,26 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     _assert_account_access(agent, account)
     pricing = _pricing(account=account, amount=amount, tariff_schedule=tariff_schedule, manual_fee=manual_fee, actor=agent, fee_justification=fee_justification)
+    supplier_fee = _supplier_fee(supplier_fee)
+    cash_impact = amount + pricing["fee"] - supplier_fee
+    if cash_impact <= 0:
+        raise ValidationError(_("Le frais fournisseur dépasse l'encaissement de l'opération."))
 
     operation = Operation.objects.create(
         type=OperationType.SENT_TRANSFER, status=OperationStatus.COMPLETED,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
+        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
     apply_movement(
-        account=account, direction=MovementDirection.IN, amount=amount + pricing["fee"],
+        account=account, direction=MovementDirection.IN, amount=cash_impact,
         movement_type=MovementType.OPERATION, actor=agent, operation=operation,
         note=f"Transfert envoyé {operation.reference}",
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Transfert envoyé enregistré"))
-    if stakeholder is not None:
-        from apps.stakeholders.models import PartnerOperation
-        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    _attach_partner(operation, stakeholder)
     if operation.status == OperationStatus.COMPLETED:
         from apps.finance.events import record_operation
         record_operation(operation, agent)
@@ -150,7 +170,8 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
 @ledger_atomic
 def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                       manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                      service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
+                      service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
+                      supplier_fee=None) -> Operation:
     """Registers an incoming payout request. No cash movement yet — status PENDING until paid."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -165,15 +186,13 @@ def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule
     operation = Operation.objects.create(
         type=OperationType.RECEIVED_TRANSFER, status=OperationStatus.PENDING,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
+        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=_supplier_fee(supplier_fee), rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, **_customer_fields(service, customer_identifier, customer_name),
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Transfert reçu en attente"))
-    if stakeholder is not None:
-        from apps.stakeholders.models import PartnerOperation
-        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    _attach_partner(operation, stakeholder)
     if operation.status == OperationStatus.COMPLETED:
         from apps.finance.events import record_operation
         record_operation(operation, agent)
@@ -190,7 +209,7 @@ def pay_received_transfer(*, operation_id: int, paid_by) -> Operation:
 
     account = CashAccount.objects.select_for_update().get(pk=operation.account_id)
     _assert_account_access(paid_by, account)
-    cash_impact = operation.amount - operation.fee
+    cash_impact = operation.amount - operation.fee + operation.supplier_fee
     if cash_impact <= 0:
         raise ValidationError(_("Les frais doivent être inférieurs au montant payé."))
     if account.balance < cash_impact:
@@ -214,7 +233,8 @@ def pay_received_transfer(*, operation_id: int, paid_by) -> Operation:
 @ledger_atomic
 def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                        manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
-                       service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False) -> Operation:
+                       service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
+                       supplier_fee=None) -> Operation:
     """Register a FINCORYA withdrawal and debit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -225,14 +245,15 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     _assert_account_access(agent, account)
     pricing = _pricing(account=account, amount=amount, tariff_schedule=tariff_schedule, manual_fee=manual_fee, actor=agent, fee_justification=fee_justification)
-    cash_impact = amount - pricing["fee"]
+    supplier_fee = _supplier_fee(supplier_fee)
+    cash_impact = amount - pricing["fee"] + supplier_fee
     if cash_impact <= 0 or account.balance < cash_impact:
         raise ValidationError(_("Fonds insuffisants dans la caisse pour ce retrait."))
 
     operation = Operation.objects.create(
         type=OperationType.WITHDRAWAL, status=OperationStatus.COMPLETED,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], rate_to_usd=pricing["rate"],
+        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
         amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
@@ -243,9 +264,7 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
     _notify_operation(operation, agent, _("Retrait payé enregistré"))
-    if stakeholder is not None:
-        from apps.stakeholders.models import PartnerOperation
-        PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    _attach_partner(operation, stakeholder)
     if operation.status == OperationStatus.COMPLETED:
         from apps.finance.events import record_operation
         record_operation(operation, agent)

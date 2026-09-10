@@ -12,7 +12,7 @@ from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -32,6 +32,11 @@ from apps.profits.models import Distribution, ProfitPeriod
 from apps.stakeholders.models import Investment, PartnerOperation, PaymentFrequency, Stakeholder
 from config.business_time import business_day_bounds
 from .models import ReportExport
+
+
+def _safe_row(values):
+    from apps.finance.reporting import safe_cell
+    return [safe_cell(value) for value in values]
 
 
 def _style_workbook(workbook):
@@ -90,7 +95,7 @@ def _csv_bytes(snapshot):
     writer = csv.writer(stream)
     writer.writerow(["reference", "date", "type", "service", "client", "identifiant", "status", "amount", "currency", "commission", "agent"])
     for row in snapshot["rows"]:
-        writer.writerow([row[key] for key in ("reference", "date", "type", "service", "customer_name", "customer_identifier", "status", "amount", "currency", "fee", "agent")])
+        writer.writerow(_safe_row([row[key] for key in ("reference", "date", "type", "service", "customer_name", "customer_identifier", "status", "amount", "currency", "fee", "agent")]))
     for currency, totals in snapshot["totals"]["by_currency"].items():
         writer.writerow(["TOTAL", "", "", "", "", "", str(snapshot["totals"]["count"]) + " opérations", totals["amount"], currency, totals["fees"], ""])
     return ("\ufeff" + stream.getvalue()).encode("utf-8")
@@ -102,7 +107,7 @@ def _xlsx_bytes(snapshot):
     detail.title = "Détail"
     detail.append(["Référence", "Date", "Type", "Service", "Client", "Identifiant", "Statut", "Montant", "Devise", "Commission", "Agent"])
     for row in snapshot["rows"]:
-        detail.append([row["reference"], row["date"], row["type"], row["service"], row["customer_name"], row["customer_identifier"], row["status"], Decimal(row["amount"]), row["currency"], Decimal(row["fee"]), row["agent"]])
+        detail.append(_safe_row([row["reference"], row["date"], row["type"], row["service"], row["customer_name"], row["customer_identifier"], row["status"], Decimal(row["amount"]), row["currency"], Decimal(row["fee"]), row["agent"]]))
     summary = workbook.create_sheet("Synthèse")
     summary.append(["Indicateur", "Valeur"])
     summary.append(["Nombre d'opérations", snapshot["totals"]["count"]])
@@ -184,13 +189,17 @@ def _build_branded_pdf(*, title, subtitle, sections, downloaded_by, landscape_mo
     styles.add(ParagraphStyle(name="CellCompact", parent=styles["Cell"], fontSize=7.5, leading=8.5))
     styles.add(ParagraphStyle(name="CellHeader", parent=styles["Cell"], fontName=bold_font, textColor=colors.white, alignment=TA_CENTER))
     styles.add(ParagraphStyle(name="CellHeaderCompact", parent=styles["CellCompact"], fontName=bold_font, textColor=colors.white, alignment=TA_CENTER))
+    styles.add(ParagraphStyle(name="CellMoney", parent=styles["Cell"], alignment=TA_RIGHT))
+    styles.add(ParagraphStyle(name="CellMoneyCompact", parent=styles["CellCompact"], alignment=TA_RIGHT))
     story = []
     story.extend([Paragraph(title, styles["ReportTitle"]), Paragraph(subtitle, styles["ReportMeta"])])
     usable_width = page_size[0] - document.leftMargin - document.rightMargin
     chart = _summary_chart(chart_data or {}, usable_width)
     if chart:
         story.extend([chart, Spacer(1, 2 * mm)])
-    for section_number, (section_title, data) in enumerate(sections, start=1):
+    for section_number, section in enumerate(sections, start=1):
+        section_title, data, *extra = section
+        numeric = set(extra[0]) if extra else set()
         story.append(CondPageBreak(34 * mm))
         story.append(Paragraph(f"{section_number}. {section_title}", styles["SectionTitle"]))
         if len(data) <= 1:
@@ -200,10 +209,10 @@ def _build_branded_pdf(*, title, subtitle, sections, downloaded_by, landscape_mo
         compact = len(data[0]) > 10
         for row_index, row in enumerate(data):
             if compact:
-                style = styles["CellHeaderCompact"] if row_index == 0 else styles["CellCompact"]
+                style, money = (styles["CellHeaderCompact"], styles["CellHeaderCompact"]) if row_index == 0 else (styles["CellCompact"], styles["CellMoneyCompact"])
             else:
-                style = styles["CellHeader"] if row_index == 0 else styles["Cell"]
-            rendered.append([Paragraph(str(value).replace("&", "&amp;").replace("<", "&lt;"), style) for value in row])
+                style, money = (styles["CellHeader"], styles["CellHeader"]) if row_index == 0 else (styles["Cell"], styles["CellMoney"])
+            rendered.append([Paragraph(str(value).replace("&", "&amp;").replace("<", "&lt;"), money if index in numeric else style) for index, value in enumerate(row)])
         widths = [usable_width / len(rendered[0])] * len(rendered[0])
         table = Table(rendered, colWidths=widths, repeatRows=1, hAlign="LEFT")
         table.setStyle(TableStyle([
@@ -369,7 +378,7 @@ def _monthly_csv(snapshot):
         writer.writerow([title])
         if rows:
             writer.writerow(rows[0].keys())
-            for row in rows: writer.writerow(row.values())
+            for row in rows: writer.writerow(_safe_row(row.values()))
         writer.writerow([])
     return ("\ufeff" + stream.getvalue()).encode("utf-8")
 
@@ -382,7 +391,7 @@ def _monthly_xlsx(snapshot):
         sheet = workbook.create_sheet(title)
         if rows:
             sheet.append(list(rows[0].keys()))
-            for row in rows: sheet.append(list(row.values()))
+            for row in rows: sheet.append(_safe_row(row.values()))
             sheet.freeze_panes = "A2"
             sheet.auto_filter.ref = sheet.dimensions
     summary = workbook.create_sheet("Synthèse", 0)
@@ -443,4 +452,96 @@ def generate_monthly_report(*, user, year, month, format, agent=None, stakeholde
         export.status = "FAILED"; export.completed_at = timezone.now(); export.save(update_fields=["status", "completed_at"])
         raise
     record(actor=user, action="MONTHLY_REPORT_GENERATE", instance=export, after={"period": snapshot["period"], "filters": snapshot["filters"]})
+    return export
+
+
+# --------------------------------------------------------------------------- finance report centre
+
+def _text(value):
+    if isinstance(value, Decimal):
+        return f"{value.quantize(Decimal('0.01')):,.2f}".replace(",", " ")
+    return value.strftime("%d/%m/%Y") if hasattr(value, "strftime") else ("" if value is None else str(value))
+
+
+def _finance_csv(report):
+    from apps.finance.reporting import header_rows
+    stream = StringIO(newline="")
+    writer = csv.writer(stream)
+    for row in header_rows(report):
+        writer.writerow(_safe_row(row))
+    for section in report["sections"]:
+        writer.writerow([])
+        writer.writerow([section["title"].upper()])
+        writer.writerow(section["columns"])
+        for row in section["rows"]:
+            writer.writerow(_safe_row([_text(v) if not isinstance(v, Decimal) else v for v in row]))
+        for row in section["totals"]:
+            writer.writerow(_safe_row([_text(v) if not isinstance(v, Decimal) else v for v in row]))
+    return ("\ufeff" + stream.getvalue()).encode("utf-8")
+
+
+def _finance_xlsx(report):
+    from apps.finance.reporting import header_rows
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "En-tête"
+    summary.append(["Champ", "Valeur"])
+    for row in header_rows(report):
+        summary.append(_safe_row(row))
+    for index, section in enumerate(report["sections"], start=1):
+        sheet = workbook.create_sheet(f"{index}. {section['title']}"[:31].replace("/", "-").replace(":", ""))
+        sheet.append(section["columns"])
+        for row in section["rows"]:
+            sheet.append(_safe_row([v if isinstance(v, (Decimal, int)) else _text(v) for v in row]))
+        for row in section["totals"]:
+            sheet.append(_safe_row([v if isinstance(v, (Decimal, int)) else _text(v) for v in row]))
+            for cell in sheet[sheet.max_row]:
+                cell.font = Font(bold=True)
+        for column_index in section["numeric"]:
+            for cell in list(sheet.columns)[column_index][1:]:
+                cell.number_format = "#,##0.00"
+                cell.alignment = Alignment(horizontal="right")
+    _style_workbook(workbook)
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+
+def _finance_pdf(report, user):
+    from apps.finance.reporting import header_rows
+    sections = [("En-tête et synthèse", [["Champ", "Valeur"], *header_rows(report)])]
+    for section in report["sections"]:
+        data = [section["columns"], *[[_text(v) for v in row] for row in section["rows"]]]
+        data.extend([[_text(v) for v in row] for row in section["totals"]])
+        sections.append((section["title"], data, section["numeric"]))
+    subtitle = f"{report['period']['label']} · {report['period']['timezone']} · {report['status']} · {report['id']} v{report['version']}"
+    return _build_branded_pdf(title=report["title"], subtitle=subtitle, sections=sections, downloaded_by=user, landscape_mode=True)
+
+
+def generate_finance_report(*, user, kind, preset, anchor, format, custom_end=None, filters=None):
+    from apps.finance.reporting import build_report, can_download
+    from django.core.exceptions import PermissionDenied
+    if not can_download(user):
+        raise PermissionDenied("Le téléchargement des rapports n’est pas activé pour votre rôle.")
+    report = build_report(user=user, kind=kind, preset=preset, anchor=anchor, custom_end=custom_end, filters=filters)
+    format = format.upper()
+    builders = {"CSV": _finance_csv, "XLSX": _finance_xlsx}
+    if format not in {*builders, "PDF"}:
+        raise ValueError("Format non pris en charge.")
+    export = ReportExport.objects.create(requested_by=user, kind=f"FINANCE_{kind}", format=format,
+        filters={"start_date": str(report["period"]["start"]), "end_date": str(report["period"]["end"]), "preset": preset, **report["filters"]},
+        snapshot={"id": report["id"], "version": report["version"], "status": report["status"],
+                  "sections": [{"title": s["title"], "columns": s["columns"], "rows": [[_text(v) for v in r] for r in s["rows"]], "totals": [[_text(v) for v in r] for r in s["totals"]]} for s in report["sections"]]})
+    try:
+        content = _finance_pdf(report, user) if format == "PDF" else builders[format](report)
+        export.file.save(f"{kind.lower()}-{report['period']['start']}-{report['period']['end']}.{format.lower()}", ContentFile(content), save=False)
+        export.status, export.completed_at = "READY", timezone.now()
+        export.save(update_fields=["file", "status", "completed_at"])
+    except Exception:
+        if export.file:
+            export.file.delete(save=False)
+        export.status, export.completed_at = "FAILED", timezone.now()
+        export.save(update_fields=["status", "completed_at"])
+        raise
+    record(actor=user, action="REPORT_GENERATE", instance=export, after={"kind": kind, "format": format, "report_id": report["id"]})
     return export

@@ -20,6 +20,8 @@ class ExpenseCategory(models.TextChoices):
     SALARY = "SALARY", _("Salaire d'agent")
     RENT = "RENT", _("Loyer")
     OPERATIONS = "OPERATIONS", _("Charge opérationnelle")
+    SUPPLIER_FEE = "SUPPLIER_FEE", _("Frais fournisseur")
+    INVESTOR_RETURN = "INVESTOR_RETURN", _("Rémunération investisseur")
     OTHER = "OTHER", _("Autre")
 
 class Expense(models.Model):

@@ -18,9 +18,10 @@ from apps.expenses.services import decide_expense
 from apps.finance.closing import (close_period, period_report, record_count,
     propose_distribution, approve_distributions, pay_distribution)
 from apps.finance.events import counterpart, pay_expense, pay_partner
+from apps.finance.funds import record_contribution, set_partner_guarantee
 from apps.finance.imports import stage_import, review_import
 from apps.finance.locking import save_internal
-from apps.finance.models import (AccountType, EconomicRule, FinancialAccount,
+from apps.finance.models import (AccountType, DistributionPolicy, EconomicRule, FinancialAccount,
     FinancialPeriod, ImportRow, JournalBatch, LedgerMutex)
 from apps.finance.services import (ledger_balance, migrate_legacy_opening_balances,
     prepare_batch, post_batch, reconcile_account)
@@ -55,6 +56,14 @@ class FinanceScenario:
         ExchangeRate.objects.create(currency=self.usd, rate_to_usd=1, effective_at=datetime(2026, 6, 1, tzinfo=ZONE), created_by=self.admin)
         self.tariff = TariffSchedule.objects.create(name='Test', currency=self.usd, is_published=True)
         TariffTier.objects.create(schedule=self.tariff, min_amount=Decimal('.01'), max_amount=5000, fixed_fee=100)
+        # Old distribution rule (dated percentages) stays in force for the historical scenarios.
+        DistributionPolicy.objects.create(mode='RULE_PERCENT', effective_from=date(2026, 6, 1), created_by=self.admin)
+        # A service account (not a legacy cash box) receives the partner guarantee.
+        self.service_account = FinancialAccount.objects.create(code='MPESA-USD-1', name='M-Pesa USD compte 1', account_type='MOBILE_MONEY', nature='ASSET', currency=self.usd)
+        set_partner_guarantee(actor=self.admin, stakeholder_id=self.partner.pk, currency=self.usd, per_operation_ceiling=Decimal('1500'))
+        with patch('django.utils.timezone.now', return_value=datetime(2026, 6, 3, 12, tzinfo=ZONE)):
+            record_contribution(actor=self.admin, client_key='guarantee-1', origin='PARTNER_GUARANTEE', stakeholder_id=self.partner.pk,
+                amount=Decimal('2000'), currency=self.usd, received_on=date(2026, 6, 3), account_id=self.service_account.pk)
 
     def operation(self, key='op', partner=None, when=JULY):
         with patch('django.utils.timezone.now', return_value=when):
@@ -66,7 +75,7 @@ class FinanceScenario:
 
     def count_all(self, period):
         for row in period_report(period)['accounts']:
-            if row['account'].account_type in {'AGENT_CASH', 'GLOBAL_CASH'}:
+            if row['account'].account_type in {'AGENT_CASH', 'GLOBAL_CASH', 'MOBILE_MONEY'}:
                 record_count(period_id=period.pk, account_id=row['account'].pk,
                     declared=row['closing'], justification='', actor=self.admin)
 

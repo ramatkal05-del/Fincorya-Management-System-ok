@@ -1,0 +1,17 @@
+{% extends "app_base.html" %}
+{% block title %}Mon espace — FINCORYA{% endblock %}
+{% block context_name %}Mon espace {{ party.get_type_display|lower }}{% endblock %}
+{% block module_content %}
+<header class="page-hero"><div><p class="eyebrow">{{ party.get_type_display }}</p><h1>{{ party.name }}</h1><p>Votre situation personnelle et vos demandes. Les opérations affichées ne sont pas modifiables depuis cet espace.</p></div>
+{% if can_download %}<a class="button button-secondary" href="{% url 'reports:center' %}">Télécharger mes rapports</a>{% endif %}</header>
+<div class="workflow-grid">
+  <div hx-get="{% url 'finance:party_space' %}" hx-trigger="every 60s" hx-swap="outerHTML">{% include "finance/_party_situation.html" %}</div>
+  <aside class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Demande</p><h2>Nouvelle demande</h2></div></div>
+    <p class="muted">Réinvestissement, retrait, augmentation ou conversion : rien ne bouge avant validation puis exécution par l’administration.</p>
+    <form method="post" class="form-stack" novalidate onsubmit="return confirm('Soumettre cette demande ?')">{% csrf_token %}{% include "_form_fields.html" with form=form %}<div class="button-row"><button class="button button-primary">Soumettre</button></div></form>
+    <h3>Mes demandes</h3>
+    {% for row in requests %}<p>{{ row.submitted_at|date:'d/m/Y' }} · {{ row.get_kind_display }} · {{ row.amount }} {{ row.currency.code }} · <span class="status-badge status-{{ row.status|lower }}">{{ row.get_status_display }}</span>{% if row.decision_comment %} · {{ row.decision_comment }}{% endif %}</p>{% empty %}<p class="muted">Aucune demande.</p>{% endfor %}
+  </aside>
+</div>
+{% endblock %}

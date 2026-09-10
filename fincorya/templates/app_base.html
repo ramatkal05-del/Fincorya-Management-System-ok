@@ -13,6 +13,13 @@
       <a class="workspace-link {% if request.resolver_match.namespace == 'finance' %}active{% endif %}" href="{% url 'finance:overview' %}" {% if request.resolver_match.namespace == 'finance' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 7h8M8 11h3m3 0h2M8 15h3m3 0h2"/></svg><span>Finance</span></a>
       {% endif %}
       <a class="workspace-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg><span>Vue d'ensemble</span></a>
+      {% if request.user.role == 'SHAREHOLDER' or request.user.role == 'INVESTOR' or request.user.role == 'PARTNER' %}
+      <a class="workspace-link {% if request.resolver_match.url_name == 'party_space' %}active{% endif %}" href="{% url 'finance:party_space' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Mon espace</span></a>
+      <a class="workspace-link {% if request.resolver_match.url_name == 'center' %}active{% endif %}" href="{% url 'reports:center' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10m5 10V5m6 15v-8m5 8V3"/></svg><span>Mes rapports</span></a>
+      {% endif %}
+      {% if request.user.role == 'ADMIN' or request.user.role == 'FINANCE_MANAGER' or request.user.role == 'AGENT' %}
+      <a class="workspace-link {% if request.resolver_match.url_name == 'center' %}active{% endif %}" href="{% url 'reports:center' %}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 7h8M8 11h8M8 15h5"/></svg><span>Centre de rapports</span></a>
+      {% endif %}
       {% if request.user.role == 'AGENT' or request.user.role == 'ADMIN' %}
         <p class="nav-kicker">Flux financiers</p>
         <a class="workspace-link {% if request.resolver_match.namespace == 'operations' %}active{% endif %}" href="{% url 'operations:list' %}" {% if request.resolver_match.namespace == 'operations' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3m3 3-3 3M17 17H5l3 3m-3-3 3-3"/></svg><span>Opérations</span></a>

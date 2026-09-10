@@ -15,14 +15,14 @@ def _accounts_for(user):
     rows = CashAccount.objects.select_related("agent", "currency", "global_account")
     if user.role == Role.AGENT:
         return rows.filter(agent=user, is_active=True)
-    if user.role == Role.ADMIN:
+    if user.role in {Role.ADMIN, Role.FINANCE_MANAGER}:
         return rows
     return rows.none()
 
 
 @mfa_required
 def cash_list(request):
-    global_accounts = GlobalCashAccount.objects.select_related("currency", "administrator") if request.user.role == Role.ADMIN else GlobalCashAccount.objects.none()
+    global_accounts = GlobalCashAccount.objects.select_related("currency", "administrator") if request.user.role in {Role.ADMIN, Role.FINANCE_MANAGER} else GlobalCashAccount.objects.none()
     return render(request, "cash/list.html", {"accounts": _accounts_for(request.user), "global_accounts": global_accounts})
 
 

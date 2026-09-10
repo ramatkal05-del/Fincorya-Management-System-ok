@@ -1,0 +1,22 @@
+{% extends "app_base.html" %}{% load form_accessibility %}
+{% block title %}Centre de rapports — FINCORYA{% endblock %}
+{% block context_name %}Centre de rapports{% endblock %}
+{% block module_content %}
+<header class="module-page-header"><div><p class="eyebrow">Pilotage financier</p><h1>Centre de rapports</h1><p class="muted">Périodes explicites, périmètre appliqué côté serveur, mêmes calculs pour l’affichage, le PDF, l’Excel et le CSV.</p></div></header>
+<div class="workflow-grid">
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Paramètres</p><h2>Générer un rapport</h2></div></div>
+    <form method="get" class="financial-form" novalidate hx-get="{% url 'reports:center' %}" hx-target="#report-result" hx-select="#report-result" hx-swap="outerHTML" hx-indicator="#report-loading">
+      {% if form.non_field_errors %}<div class="alert alert-error" role="alert">{{ form.non_field_errors.0 }}</div>{% endif %}
+      {% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}{% if field.help_text %}<small class="muted">{{ field.help_text }}</small>{% endif %}{% if field.errors %}<span id="{{ field.auto_id }}_errors" class="field-error" role="alert">{{ field.errors.0 }}</span>{% endif %}</div>{% endfor %}
+      <button class="button button-primary" type="submit">Générer</button>
+      <span id="report-loading" class="htmx-indicator muted" role="status">Calcul en cours…</span>
+    </form>
+  </section>
+  <aside class="panel impact-panel"><p class="eyebrow">Conventions</p><h2>Périodes et devises</h2><p class="muted">Journée métier et semaine exprimées en fuseau Europe/Istanbul ; la convention de semaine est affichée dans chaque en-tête. Les montants restent par devise : aucune conversion implicite.</p>{% if not can_download %}<p class="muted">Le téléchargement de fichiers n’est pas activé pour votre rôle ; consultez à l’écran.</p>{% endif %}</aside>
+</div>
+{% include "reports/_center_result.html" %}
+<section class="panel ledger-panel report-card"><div class="panel-heading"><h2>Exports récents du centre</h2></div>
+{% if exports %}<div class="table-wrap"><table><caption class="sr-only">Exports récents</caption><thead><tr><th scope="col">Généré le</th><th scope="col">Rapport</th><th scope="col">Période</th><th scope="col">Format</th><th scope="col">Statut</th><th scope="col">Action</th></tr></thead><tbody>{% for export in exports %}<tr><td>{{ export.created_at|date:'d/m/Y H:i' }}</td><td>{{ export.kind|slice:'8:' }}</td><td>{{ export.filters.start_date }} — {{ export.filters.end_date }}</td><td>{{ export.format }}</td><td><span class="status-badge status-{{ export.status|lower }}">{{ export.get_status_display }}</span></td><td>{% if export.status == 'READY' %}<a class="text-link" href="{% url 'reports:download' export.public_id %}">Télécharger</a>{% else %}—{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state compact"><h3>Aucun export</h3><p>Les fichiers générés apparaîtront ici.</p></div>{% endif %}
+</section>
+{% endblock %}

@@ -25,6 +25,49 @@ class OperationReportForm(forms.Form):
         return cleaned
 
 
+class FinanceReportForm(forms.Form):
+    """Report centre: explicit period presets with visible dates, server-side kind restriction."""
+    kind = forms.ChoiceField(label="Rapport")
+    preset = forms.ChoiceField(label="Période", choices=(("DAY", "Journée"), ("WEEK", "Semaine"), ("MONTH", "Mois"), ("QUARTER", "Trimestre"), ("YEAR", "Année"), ("CUSTOM", "Personnalisée")))
+    anchor = forms.DateField(label="Date de référence (début pour une période personnalisée)", widget=forms.DateInput(attrs={"type": "date"}))
+    custom_end = forms.DateField(label="Fin (période personnalisée)", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    agent = forms.ModelChoiceField(label="Agent", required=False, queryset=User.objects.none(), empty_label="Tous les agents")
+    service = forms.ChoiceField(label="Service", required=False)
+    status = forms.ChoiceField(label="Statut d’opération", required=False)
+    country = forms.CharField(label="Pays (code)", required=False, max_length=2)
+    format = forms.ChoiceField(label="Sortie", choices=(("HTML", "Afficher"), ("PDF", "PDF"), ("XLSX", "Excel"), ("CSV", "CSV")))
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.finance.reporting import allowed_kinds, can_download
+        from apps.operations.models import OperationStatus, TransactionService
+        kinds = allowed_kinds(user)
+        self.fields["kind"].choices = list(kinds.items())
+        self.fields["anchor"].initial = timezone.localdate()
+        self.fields["agent"].queryset = User.objects.filter(role=Role.AGENT, is_active=True).order_by("first_name", "email")
+        self.fields["service"].choices = (("", "Tous les services"), *TransactionService.choices)
+        self.fields["status"].choices = (("", "Tous les statuts"), *OperationStatus.choices)
+        if user.role == Role.AGENT:
+            self.fields["preset"].choices = (("DAY", "Journée"),)
+            for name in ("agent", "service", "status", "country"):
+                self.fields.pop(name)
+        if not can_download(user):
+            self.fields["format"].choices = (("HTML", "Afficher"),)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("preset") == "CUSTOM":
+            end = cleaned.get("custom_end")
+            if not end or (cleaned.get("anchor") and end < cleaned["anchor"]):
+                self.add_error("custom_end", "Indiquez une date de fin postérieure au début.")
+            elif cleaned.get("anchor") and (end - cleaned["anchor"]).days > 366:
+                self.add_error("custom_end", "La période ne peut pas dépasser 366 jours.")
+        return cleaned
+
+    def filters(self):
+        return {key: self.cleaned_data.get(key) for key in ("agent", "service", "status", "country") if self.cleaned_data.get(key)}
+
+
 class MonthlyReportForm(forms.Form):
     year = forms.IntegerField(label="Année", min_value=2020, max_value=2100)
     month = forms.ChoiceField(label="Mois", choices=[(i, name) for i, name in enumerate(

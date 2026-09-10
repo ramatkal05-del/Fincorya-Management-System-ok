@@ -1,13 +1,21 @@
 <nav class="finance-tabs" aria-label="Navigation finance">
 <a class="button button-secondary" href="{% url 'finance:overview' %}">Comptes financiers</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'contributions' %}">Apports</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'transfers' %}">Transferts</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'requests' %}">Demandes</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'parties' %}">Parties prenantes</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'guarantees' %}">Garanties</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'rules' %}">Règles</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'policies' %}">Distribution</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'remunerations' %}">Rémunérations</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'conversions' %}">Conversions</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'services' %}">Services</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'journal' %}">Journal</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'periods' %}">Clôtures et rapports</a>
+<a class="button button-secondary" href="{% url 'finance:workspace' 'periods' %}">Clôtures</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'expenses' %}">Charges à payer</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'profits' %}">Bénéfices</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'distributions' %}">Distributions</a>
+<a class="button button-secondary" href="{% url 'reports:center' %}">Centre de rapports</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'imports' %}">Préparation d’import</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'reconciliation' %}">Réconciliation</a>
 </nav>

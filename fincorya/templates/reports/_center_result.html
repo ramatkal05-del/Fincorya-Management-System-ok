@@ -1,0 +1,22 @@
+{% load report_cells %}
+<div id="report-result">
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+{% if report %}
+<section class="panel report-card">
+  <div class="panel-heading"><div><p class="eyebrow">{{ report.status }}</p><h2>{{ report.title }}</h2><p class="muted">{{ report.period.label }} · {{ report.period.timezone }}</p></div><span class="header-count">{{ report.id }} · v{{ report.version }}</span></div>
+  <dl class="report-meta">
+    <div><dt>Convention de semaine</dt><dd>{{ report.week_convention }}</dd></div>
+    <div><dt>Filtres</dt><dd>{% for key, value in report.filters.items %}{{ key }} : {{ value }}{% if not forloop.last %}, {% endif %}{% empty %}aucun{% endfor %}</dd></div>
+    <div><dt>Devise</dt><dd>{{ report.currency_note }}</dd></div>
+    <div><dt>Généré le</dt><dd>{{ report.generated_at|date:'d/m/Y H:i' }} par {{ report.author }}</dd></div>
+  </dl>
+  {% for section in report.sections %}
+  <div class="table-wrap"><table><caption>{{ forloop.counter }}. {{ section.title }}</caption>
+    <thead><tr>{% for column in section.columns %}<th scope="col"{% if forloop.counter0 in section.numeric %} class="money"{% endif %}>{{ column }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in section.rows %}<tr>{% for value in row %}<td{% if forloop.counter0 in section.numeric %} class="money"{% endif %}>{{ value|report_cell }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="{{ section.columns|length }}">Aucune donnée pour cette section sur la période.</td></tr>{% endfor %}</tbody>
+    {% if section.totals %}<tfoot>{% for row in section.totals %}<tr>{% for value in row %}{% if forloop.first %}<th scope="row">{{ value }}</th>{% else %}<td{% if forloop.counter0 in section.numeric %} class="money"{% endif %}><strong>{{ value|report_cell }}</strong></td>{% endif %}{% endfor %}</tr>{% endfor %}</tfoot>{% endif %}
+  </table></div>
+  {% endfor %}
+</section>
+{% endif %}
+</div>
