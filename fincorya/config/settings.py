@@ -91,12 +91,27 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 DB_HOST = env("DB_HOST", default="")
+DATABASE_URL = env("DATABASE_URL", default="")
 if DB_HOST:
+    # Variables individuelles (développement local, serveur dédié).
     DATABASES = {"default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": env("DB_NAME", default="fincorya"), "USER": env("DB_USER", default="fincorya"),
         "PASSWORD": env("DB_PASSWORD", default=""), "HOST": DB_HOST,
         "PORT": env("DB_PORT", default="5432"),
+        "CONN_MAX_AGE": 60,
+    }}
+elif DATABASE_URL:
+    # Render et autres PaaS fournissent une URL de connexion unique.
+    from urllib.parse import urlparse
+    parsed = urlparse(DATABASE_URL)
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.postgresql" if parsed.scheme.startswith("postgres") else "django.db.backends.sqlite3",
+        "NAME": parsed.path.lstrip("/"),
+        "USER": parsed.username or "",
+        "PASSWORD": parsed.password or "",
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or 5432),
         "CONN_MAX_AGE": 60,
     }}
 else:
