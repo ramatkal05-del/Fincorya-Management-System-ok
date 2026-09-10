@@ -19,6 +19,7 @@ if not SECRET_KEY:
         raise ImproperlyConfigured("DJANGO_SECRET_KEY est obligatoire lorsque DEBUG=False.")
     SECRET_KEY = "fincorya-local-only-2026-change-before-production-9x7p-4k2m-8q5v"
 ALLOWED_HOSTS = [host.strip() for host in env("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",") if host.strip()]
+ALLOWED_HOSTS.extend(host for host in ("fincorya.com", "www.fincorya.com") if host not in ALLOWED_HOSTS)
 RENDER_EXTERNAL_HOSTNAME = env("RENDER_EXTERNAL_HOSTNAME", default="")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
