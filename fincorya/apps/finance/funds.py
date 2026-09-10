@@ -458,7 +458,7 @@ def execute_request(*, actor, request_id, account_id=None, received_on=None):
     """Post the validated request exactly once. Cash kinds require a treasury account."""
     require_finance_access(actor, "approve")
     _engine_required()
-    request = StakeholderRequest.objects.select_for_update().select_related("stakeholder", "currency", "distribution__allocation__period").get(pk=request_id)
+    request = StakeholderRequest.objects.select_for_update().get(pk=request_id)
     if request.status == RequestStatus.EXECUTED:
         return request
     if request.status != RequestStatus.APPROVED:

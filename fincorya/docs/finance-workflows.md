@@ -65,3 +65,16 @@ Aucun compte partenaire, investisseur, actionnaire, garantie, dépôt, plafond o
 4. Rémunération fixe mensuelle de chaque investisseur (`EconomicRule` `REMUNERATION`) + conditions contractuelles (`RemunerationTerms`).
 5. `FINANCE_WEEK_START`, `REPORT_DOWNLOAD_ROLES`.
 6. Reprise manuelle : origine des 1 540 USD de cash en main, position Fantiny −369 USD (les éléments contextuels du brief ne donnent lieu à aucune création automatique).
+
+## 9. Ordre de configuration initiale (administrateur)
+1. **Utilisateurs et rôles** : créer les comptes admin, chargée des finances, agents ; activer MFA et désactiver `LOCAL_AUTH_BYPASS` en production.
+2. **Devises et taux** : vérifier les devises actives, publier les taux `ExchangeRate` (référence USD) et les grilles tarifaires.
+3. **Caisse globale** : créer/ajuster `GlobalCashAccount` par devise avec un encaissement justifié.
+4. **Bascule du grand livre** : préparer puis appliquer `migrate_opening_balances` avec son empreinte ; résoudre les anomalies de reprise.
+5. **Comptes de service** : créer les comptes M-Pesa/Digital/etc. nécessaires (Finance › Comptes financiers).
+6. **Parties prenantes** : créer chaque actionnaire, investisseur, partenaire via « Créer une partie » ; saisir dépôts réels et garanties (max 2 000 USD/opération, jamais déduits du dépôt) ; rattacher `owner` au compte utilisateur.
+7. **Rémunérations** : règle datée `REMUNERATION` (montant fixe + devise) et `RemunerationTerms` (dates de contrat, mois incomplet, mois déficitaire) pour chaque investisseur concerné.
+8. **Distribution** : politique datée `EQUAL_SHARES` (ou `CAPITAL_PROPORTIONAL` si décidé) avec actionnaires et pourcentages totalisant 100 %.
+9. **Caisses agent** : ouvrir les caisses post-bascule puis allouer les fonds depuis la caisse globale.
+10. **Clôtures et rapports** : comptages périodiques, clôture mensuelle, vérification des exports ; `FINANCE_WEEK_START` et `REPORT_DOWNLOAD_ROLES` selon la gouvernance.
+Les données du brief (dont Fantiny) restent de l'évidence à documenter manuellement : aucun montant, compte ni écriture n'est prérempli.
