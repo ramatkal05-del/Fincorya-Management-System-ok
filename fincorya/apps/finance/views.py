@@ -68,7 +68,8 @@ def period_create(request):
 
 @mfa_required
 def workspace(request, section):
-    policy = require_finance_access(request.user, "view_all")
+    from .funds import require_transfer_access
+    policy = require_transfer_access(request.user) if section == "transfers" else require_finance_access(request.user, "view_all")
     from apps.stakeholders.models import Stakeholder
     from apps.expenses.models import Expense
     from apps.profits.models import ProfitPeriod, Distribution
@@ -94,6 +95,8 @@ def workspace(request, section):
     if section not in definitions:
         raise Http404
     title, rows = definitions[section]
+    if policy.own_cash_only:
+        rows = rows.filter(Q(source__responsible_user=request.user) | Q(destination__responsible_user=request.user))
     if not rows.ordered:
         rows = rows.order_by("pk")
     return render(request, "finance/workspace.html", {"title": title, "section": section, "page": Paginator(rows, 25).get_page(request.GET.get("page")), "policy": policy})
@@ -321,9 +324,9 @@ def contribution_create(request):
 
 @mfa_required
 def transfer_create(request):
-    require_finance_access(request.user, "prepare")
-    from .funds import initiate_transfer
-    form = TransferForm(request.POST or None, initial={"client_key": uuid.uuid4().hex})
+    from .funds import initiate_transfer, require_transfer_access
+    require_transfer_access(request.user)
+    form = TransferForm(request.POST or None, user=request.user, initial={"client_key": uuid.uuid4().hex})
     if request.method == "POST" and form.is_valid():
         data = form.cleaned_data.copy()
         data["source_id"], data["destination_id"] = data["source_id"].pk, data["destination_id"].pk
@@ -336,12 +339,22 @@ def transfer_create(request):
 @require_POST
 @mfa_required
 def transfer_action(request, pk, action):
-    require_finance_access(request.user, "approve")
-    from .funds import cancel_transfer, confirm_transfer
+    if action in {"receive", "return"}:
+        from .funds import require_transfer_access
+        require_transfer_access(request.user)
+    else:
+        require_finance_access(request.user, "approve")
+    from .funds import cancel_transfer, confirm_transfer, receive_transfer, confirm_transfer_return
     try:
-        if action == "confirm":
+        if action == "return":
+            confirm_transfer_return(actor=request.user, transfer_id=pk, note=request.POST.get("reason", ""))
+            messages.success(request, "Retour confirmé ; l’administrateur peut annuler et recréditer la source.")
+        elif action == "receive":
+            receive_transfer(actor=request.user, transfer_id=pk)
+            messages.success(request, "Réception confirmée ; les fonds restent en transit jusqu’à validation finale.")
+        elif action == "confirm":
             confirm_transfer(actor=request.user, transfer_id=pk)
-            messages.success(request, "Réception confirmée ; les fonds sont sortis du transit.")
+            messages.success(request, "Transfert validé ; les fonds sont sortis du transit.")
         elif action == "cancel":
             form = ReasonForm(request.POST)
             if not form.is_valid():
@@ -374,16 +387,10 @@ def policy_create(request):
     form = PolicyForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         def save():
-            from django.db import transaction
+            from .policies import create_distribution_policy
             data = form.cleaned_data
-            with transaction.atomic():
-                policy = DistributionPolicy.objects.create(mode=data["mode"], effective_from=data["effective_from"],
-                                                           notes=data["notes"], created_by=request.user)
-                for stakeholder_id, percent in (data.get("shares") or {}).items():
-                    DistributionPolicyShare.objects.create(policy=policy, stakeholder_id=stakeholder_id, percent=percent)
-            record(actor=request.user, action="DISTRIBUTION_POLICY_CREATE", instance=policy,
-                   after={"mode": policy.mode, "effective_from": str(policy.effective_from), "shares": len(data.get("shares") or {})})
-            return policy
+            return create_distribution_policy(actor=request.user, mode=data["mode"], effective_from=data["effective_from"],
+                                              shares=data.get("shares"), notes=data["notes"])
         if _run(form, save):
             return redirect("finance:workspace", section="policies")
     return render(request, "finance/form.html", {"title": "Nouvelle politique de distribution datée", "form": form,
@@ -495,7 +502,27 @@ def party_space(request):
     requests_rows = StakeholderRequest.objects.filter(stakeholder=party).select_related("currency")[:50]
     context = {"party": party, "form": form, "situation": situation, "global_view": global_view, "requests": requests_rows,
                "refreshed_at": timezone.now(), "can_download": can_download(request.user)}
+    if party.type == "PARTNER":
+        from .forms import CommissionChoiceForm
+        context["commission_form"] = CommissionChoiceForm()
+        context["commission_choices"] = party.commission_choices.select_related("chosen_by")[:20]
     return render(request, "finance/_party_situation.html" if request.htmx else "finance/party_space.html", context)
+
+
+@mfa_required
+def commission_choice(request):
+    from apps.accounts.permissions import linked_party
+    from .commissions import choose_commission_destination
+    from .forms import CommissionChoiceForm
+    party = linked_party(request.user)
+    if party is None or party.type != "PARTNER":
+        raise PermissionDenied("Ce choix appartient au partenaire connecté.")
+    form = CommissionChoiceForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        if _run(form, lambda: choose_commission_destination(actor=request.user, **form.cleaned_data)):
+            messages.success(request, "Choix enregistré pour les nouvelles commissions à partir de sa date d’effet.")
+            return redirect("finance:party_space")
+    return render(request, "finance/form.html", {"title": "Destination de mes commissions", "form": form})
 
 
 @mfa_required

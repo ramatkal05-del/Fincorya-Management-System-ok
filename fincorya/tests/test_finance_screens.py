@@ -26,10 +26,12 @@ class FinanceScreenTests(FinanceScenario, TestCase):
         response = self.client.post(reverse('finance:transfer_create'), {'client_key': 'screen-t', 'source_id': self.service_account.pk, 'destination_id': self.cash.pk, 'amount': '100', 'fee': '0'})
         self.assertEqual(response.status_code, 302)
         transfer = InternalTransfer.objects.get(client_key='screen-t')
+        self.client.post(reverse('finance:transfer_action', args=[transfer.pk, 'receive']))
         self.client.post(reverse('finance:transfer_action', args=[transfer.pk, 'confirm']))
         transfer.refresh_from_db()
         self.assertEqual(transfer.status, 'CONFIRMED')
-        response = self.client.post(reverse('finance:policy_create'), {'mode': 'EQUAL_SHARES', 'effective_from': '2026-09-01', 'notes': 'Nouvelle règle'})
+        shareholder_ids = [str(sh.pk) for sh in self.shareholders]
+        response = self.client.post(reverse('finance:policy_create'), {'mode': 'EQUAL_SHARES', 'effective_from': '2026-09-01', 'shareholders': shareholder_ids, 'notes': 'Nouvelle règle'})
         self.assertEqual(response.status_code, 302)
         self.assertTrue(DistributionPolicy.objects.filter(mode='EQUAL_SHARES').exists())
         self.assertEqual(self.client.get(reverse('reports:center')).status_code, 200)

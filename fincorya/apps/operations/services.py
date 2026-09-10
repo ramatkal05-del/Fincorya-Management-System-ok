@@ -302,6 +302,8 @@ def cancel_operation(*, operation_id: int, cancelled_by, reason: str) -> Operati
         batch = JournalBatch.objects.filter(source_model="operations.Operation", source_id=str(operation.pk), event_type="OPERATION", status="POSTED").first()
         if batch is None:
             raise ValidationError("Missing original ledger batch.")
+        from apps.finance.commissions import reverse_automatic_commission
+        reverse_automatic_commission(operation=operation, actor=cancelled_by, reason=reason)
         reverse_batch(batch_id=batch.pk, actor=cancelled_by, reason=reason, idempotency_key=f"cancel-operation-{operation.pk}")
     operation.status = OperationStatus.CANCELLED
     operation.cancel_reason = reason.strip()

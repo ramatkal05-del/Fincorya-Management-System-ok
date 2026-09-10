@@ -9,21 +9,29 @@ Qui : admin (capacité `approve`).
 3. Une reprise de soldes (`OPENING-EQUITY`) n'est jamais un apport : ne ressaisissez pas les soldes migrés.
 
 ## 2. Transferts internes (Finance › Transferts)
-Qui : finance (`prepare`) pour initier, admin (`approve`) pour confirmer / annuler.
-1. Initiation : la source est créditée immédiatement, le montant passe en `TRANSIT`, les frais éventuels deviennent une charge `EXPENSE-<devise>-TRANSFER_FEE`.
-2. Confirmation de réception : la destination est débitée, le transit se vide.
-3. Annulation (motif obligatoire) : les fonds reviennent à la source ; les frais restent une charge tracée.
+Qui peut initier : un agent depuis sa propre caisse, la chargée des finances ou l'admin.
+Parcours complet :
+1. **Initiation** : l'expéditeur débite sa caisse, le montant passe en transit, l'admin est notifié immédiatement. Les frais éventuels deviennent une charge `EXPENSE-<devise>-TRANSFER_FEE`.
+2. **Réception** : l'agent destinataire confirme la réception physique. Les fonds restent en transit et ne sont pas encore disponibles.
+3. **Validation finale** : l'admin valide définitivement. La destination est débitée, le transit se vide, les fonds deviennent disponibles chez le destinataire.
+4. **Annulation** : un motif est obligatoire. Les fonds ne sont **pas automatiquement recrédités** à l'expéditeur ; un retour effectif doit être confirmé avec justificatif, puis l'admin valide l'annulation.
 Le total de trésorerie + transit est constant hors frais.
 
 ## 3. Partenaires (Finance › Garanties)
 1. Définir la garantie : devise et **plafond par opération**. Sans garantie active, aucune opération ne peut être attribuée au partenaire.
-2. À chaque opération attribuée, le système vérifie : montant ≤ plafond **et** montant ≤ garantie détenue.
+2. À chaque opération attribuée, le système vérifie : montant ≤ plafond par opération (max 2 000 USD) **et** garantie active à solde positif. L'opération peut dépasser le montant de la garantie tant qu'elle reste dans le plafond.
 3. Commission : `fee × part partenaire (règle datée)` → `PARTNER_PAYABLE` ; le reste → produits FINCORYA. Le **frais fournisseur** (`Operation.supplier_fee`) est une charge FINCORYA séparée et ne modifie jamais le partage.
 4. Conversion en garantie : via une demande `CONVERT_COMMISSION` (voir §5) ; aucun encaissement, `PARTNER_PAYABLE` → `PARTNER_GUARANTEE`.
 
+## 3bis. Choix du partenaire pour ses commissions (Mon espace › Mes commissions)
+Le partenaire connecté choisit entre deux options, historisées avec date d'effet :
+- **Option A — Conversion automatique en garantie** : chaque commission partenaire est automatiquement convertie en garantie dès l'opération, sans demande manuelle répétée. La conversion est tracée sans nouvel encaissement et sans doublon.
+- **Option B — Conservation dans « Commissions à recevoir »** : les commissions s'accumulent dans `PARTNER_PAYABLE` jusqu'à une demande manuelle de conversion.
+Le choix est historisé (`PartnerCommissionChoice` avec `effective_at`) et ne peut pas être supprimé. Les commissions accumulées avant le choix restent convertibles via une demande `CONVERT_COMMISSION`.
+
 ## 4. Clôture mensuelle et distribution (Finance › Clôtures, Bénéfices, Distribution)
 Prérequis : une **politique de distribution datée** créée par l'admin en choisissant les actionnaires existants, le mode et la date d'effet.
-Modes : `EQUAL_SHARES` (parts égales — sans sélection, tous les actionnaires actifs ; confirmé : 25 % chacun des quatre actionnaires), `CAPITAL_PROPORTIONAL` (proportionnel aux apports — disponible mais non activée par défaut), `RULE_PERCENT` (règles datées historiques). La participation au capital reste calculée séparément des apports réels.
+Modes : `EQUAL_SHARES` (parts égales entre les actionnaires **sélectionnés** — la sélection est obligatoire, pas de fallback automatique ; politique initiale : quatre actionnaires à 25 % chacun), `CAPITAL_PROPORTIONAL` (proportionnel aux apports — disponible mais non activé par défaut), `RULE_PERCENT` (règles datées historiques). L'ajout d'un nouvel actionnaire ne modifie pas silencieusement une politique existante ni une distribution clôturée : il faut créer une nouvelle politique datée.
 1. Comptages de toutes les caisses/comptes, contrôles au vert, puis « Clôturer ».
 2. Le résultat est figé dans `ProfitPeriod` : commissions propres + part FINCORYA − salaires − autres charges − frais fournisseurs − rémunérations investisseurs − pertes reportées = distribuable. Les écarts de change sont comptabilisés à part (`FX_DIFFERENCE-…-REALIZED` / `-REVALUATION`), exclus du distribuable et affichés dans le rapport de résultat tant que leur traitement n'est pas décidé.
 3. Perte : aucune distribution possible ; le montant est reporté sur le mois suivant.
@@ -49,10 +57,11 @@ Rapports : activité, fonds apportés, trésorerie, commissions, charges, invest
 Périodes explicites : journée, semaine (convention affichée, `FINANCE_WEEK_START`), mois, trimestre, année, personnalisée.
 Sorties : écran (HTMX), PDF, Excel, CSV — mêmes agrégats (`apps/finance/reporting.py`). En-tête : période + fuseau, filtres, devise, auteur, statut PROVISOIRE / CLÔTURÉ, identifiant + version.
 Périmètre appliqué côté serveur :
-- Agent : rapport quotidien de ses seules opérations et de sa caisse, journée passée au choix.
-- Chargée des finances : rapports globaux d'exploitation (activité, trésorerie, commissions, charges, résultat, contrôle) ; pas de dossiers personnels.
-- Actionnaire : sa situation + activité globale en lecture.
-- Investisseur / partenaire : leur situation uniquement.
+- **Agent** : téléchargement de son rapport quotidien uniquement (journée passée ou en cours, ses opérations et sa caisse).
+- **Chargée des finances** : téléchargement du rapport hebdomadaire global et préparation de la clôture mensuelle (rapports d'exploitation : activité, trésorerie, commissions, charges, résultat, contrôle) ; pas de dossiers personnels.
+- **Admin** : tous les rapports et toutes les périodes.
+- **Actionnaire** : consultation de toutes les opérations en temps réel et analytics (activité globale en lecture), plus ses demandes personnelles autorisées.
+- **Investisseur / partenaire** : leur situation uniquement.
 - Téléchargements : rôles listés dans `REPORT_DOWNLOAD_ROLES` (défaut : admin, finance, agent).
 
 ## 7. Création manuelle des parties, dépôts, garanties et caisses
@@ -64,7 +73,7 @@ Aucun compte partenaire, investisseur, actionnaire, garantie, dépôt, plafond o
 3. Garantie et plafond de chaque partenaire (max 2 000 USD, saisi manuellement, **jamais déduit du dépôt**).
 4. Rémunération fixe mensuelle de chaque investisseur (`EconomicRule` `REMUNERATION`) + conditions contractuelles (`RemunerationTerms`).
 5. `FINANCE_WEEK_START`, `REPORT_DOWNLOAD_ROLES`.
-6. Reprise manuelle : origine des 1 540 USD de cash en main, position Fantiny −369 USD (les éléments contextuels du brief ne donnent lieu à aucune création automatique).
+6. Reprise manuelle : l'admin crée chaque compte et saisit les montants vérifiés. Aucun montant réel non confirmé n'est prérempli (voir annexe historique).
 
 ## 9. Ordre de configuration initiale (administrateur)
 1. **Utilisateurs et rôles** : créer les comptes admin, chargée des finances, agents ; activer MFA et désactiver `LOCAL_AUTH_BYPASS` en production.
@@ -77,4 +86,36 @@ Aucun compte partenaire, investisseur, actionnaire, garantie, dépôt, plafond o
 8. **Distribution** : politique datée `EQUAL_SHARES` (ou `CAPITAL_PROPORTIONAL` si décidé) avec actionnaires et pourcentages totalisant 100 %.
 9. **Caisses agent** : ouvrir les caisses post-bascule puis allouer les fonds depuis la caisse globale.
 10. **Clôtures et rapports** : comptages périodiques, clôture mensuelle, vérification des exports ; `FINANCE_WEEK_START` et `REPORT_DOWNLOAD_ROLES` selon la gouvernance.
-Les données du brief (dont Fantiny) restent de l'évidence à documenter manuellement : aucun montant, compte ni écriture n'est prérempli.
+Aucun montant, compte ni écriture n'est prérempli. Les éléments contextuels du brief restent de l'évidence à documenter manuellement par l'admin (voir annexe historique).
+
+## 10. Statut de `confirmed_brief.json`
+`confirmed_brief.json` est un paquet d'évidence historique passé en revue. Il peut être versé via `stage_import` pour **préparer des lignes de reprise à examiner** (`ImportRow`), chaque ligne recevant des anomalies (« date d'effet non confirmée », « partie à rattacher », « solde inconnu », etc.).
+Il ne constitue **jamais une source de montants validés** : aucune ligne n'est comptabilisée, ni partie, compte, dépôt, garantie ni écriture créée, sans rattachement, vérification et validation explicites de l'administrateur (`review_import` avec résolution documentée).
+
+## 11. Éviter le double comptage des fonds
+Trois parcours distincts, à ne pas confondre :
+1. **Reprise de soldes existants** (`OPENING-EQUITY`) : aucun nouvel encaissement. Les soldes migrés sont figés à la bascule.
+2. **Nouvel apport** (`CONTRIBUTION`) : un seul encaissement, trésorerie DÉBIT ↔ capital/garantie CRÉDIT.
+3. **Allocation vers une caisse ou un service** : déplacement de fonds existants (caisse globale → caisse agent ou service), pas de nouvel encaissement.
+
+## 12. Annexe historique (non validée)
+Les éléments suivants proviennent du brief contextuel et ne sont **pas validés**. Ils ne doivent pas devenir des étapes obligatoires de configuration. L'admin les documente manuellement après vérification :
+- Cash en main mentionné dans le brief : montant à confirmer par l'admin.
+- Position Fantiny mentionnée dans le brief : montant à confirmer par l'admin.
+- Tout autre montant réel non confirmé : à saisir explicitement par l'admin après rattachement et vérification.
+
+## 13. Annexe technique (modèles et comptes)
+- `FinancialAccount` : compte du grand livre (caisse, service, transit, capital, garantie, commissions, charges, etc.).
+- `JournalBatch` / `LedgerEntry` : lot d'écritures immuable, identifié par clé d'idempotence.
+- `FundContribution` : apport tracé (actionnaire, investisseur, garantie partenaire).
+- `InternalTransfer` : transfert interne (initiation, réception, validation finale, annulation).
+- `PartnerGuarantee` : garantie partenaire (devise, plafond par opération, active).
+- `PartnerCommissionChoice` : choix du partenaire (conversion auto ou conservation).
+- `CommissionConversion` : conversion tracée sans doublon.
+- `DistributionPolicy` / `DistributionPolicyShare` : politique datée avec actionnaires sélectionnés.
+- `StakeholderRequest` : demande d'une partie prenante (réinvestir, convertir, etc.).
+- `EconomicRule` : règle datée (commission partenaire, rémunération investisseur).
+- `RemunerationTerms` : conditions contractuelles d'un investisseur.
+- `FinancialPeriod` / `ProfitPeriod` : période financière et résultat mensuel.
+- `CurrencyConversion` : conversion de devises avec écart isolé.
+- `ImportRow` : ligne de reprise en attente de revue.

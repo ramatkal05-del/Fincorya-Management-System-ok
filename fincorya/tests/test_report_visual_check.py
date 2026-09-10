@@ -53,10 +53,13 @@ class ReportVisualChecks(FinanceScenario, TestCase):
     def test_admin_monthly_pdf_and_excel_match_dashboard_totals(self):
         from apps.finance.closing import close_period, propose_distribution, approve_distributions
         from apps.finance.models import DistributionPolicy
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
         from apps.profits.models import ProfitPeriod
         from apps.stakeholders.models import Stakeholder
-        Stakeholder.objects.create(name='Shareholder A', type='SHAREHOLDER')
-        DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        sh = Stakeholder.objects.create(name='Shareholder A', type='SHAREHOLDER')
+        policy = DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        save_internal(DistributionPolicyShare(policy=policy, stakeholder=sh, percent=Decimal('100')))
         month = self.period()
         self.count_all(month)
         with patch('django.utils.timezone.now', return_value=AUGUST):

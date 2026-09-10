@@ -124,7 +124,10 @@ class InvestorRemunerationE2ETests(FinanceScenario, TestCase):
         RemunerationTerms.objects.create(stakeholder=self.investor, contract_start=date(2026, 7, 1),
             partial_month='PRORATA', loss_month='PAY', updated_by=self.admin)
         shareholder = Stakeholder.objects.create(name='Holder E2E', type='SHAREHOLDER')
-        DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        policy = DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        save_internal(DistributionPolicyShare(policy=policy, stakeholder=shareholder, percent=Decimal('100')))
         self.operation()
         month = self.period()
         self.count_all(month)

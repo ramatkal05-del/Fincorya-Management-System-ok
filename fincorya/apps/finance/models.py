@@ -392,6 +392,7 @@ class FundContribution(models.Model):
 
 class TransferStatus(models.TextChoices):
     INITIATED = "INITIATED", _("En transit")
+    RECEIVED = "RECEIVED", _("Reçu, en attente de validation")
     CONFIRMED = "CONFIRMED", _("Confirmé")
     CANCELLED = "CANCELLED", _("Annulé")
 
@@ -411,6 +412,11 @@ class InternalTransfer(models.Model):
     initiated_at = models.DateTimeField()
     confirmed_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, null=True, blank=True, related_name="transfers_confirmed")
     confirmed_at = models.DateTimeField(null=True, blank=True)
+    received_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, null=True, blank=True, related_name="transfers_received")
+    received_at = models.DateTimeField(null=True, blank=True)
+    return_confirmed_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT, null=True, blank=True, related_name="transfer_returns_confirmed")
+    return_confirmed_at = models.DateTimeField(null=True, blank=True)
+    return_note = models.CharField(max_length=255, blank=True)
     initiation_batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="transfer_initiation")
     settlement_batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT, null=True, blank=True, related_name="transfer_settlement")
 
@@ -434,6 +440,48 @@ class PartnerGuarantee(models.Model):
 
     class Meta:
         constraints = [models.CheckConstraint(condition=models.Q(per_operation_ceiling__gt=0), name="guarantee_ceiling_positive")]
+
+
+class CommissionDestination(models.TextChoices):
+    GUARANTEE = "GUARANTEE", _("Conversion automatique en garantie")
+    PAYABLE = "PAYABLE", _("Conserver dans Commissions à recevoir")
+
+
+class PartnerCommissionChoice(models.Model):
+    stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="commission_choices")
+    destination = models.CharField(max_length=12, choices=CommissionDestination.choices)
+    effective_at = models.DateTimeField()
+    chosen_by = models.ForeignKey("accounts.User", on_delete=models.RESTRICT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    objects = ServiceOnlyQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-effective_at", "-pk"]
+        constraints = [models.UniqueConstraint(fields=["stakeholder", "effective_at"], name="unique_partner_choice_effect")]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Le choix est historisé ; enregistrez un nouveau choix daté.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("L’historique des choix est conservé.")
+
+
+class CommissionConversion(models.Model):
+    operation = models.OneToOneField("operations.Operation", on_delete=models.RESTRICT, related_name="automatic_commission_conversion")
+    choice = models.ForeignKey(PartnerCommissionChoice, on_delete=models.RESTRICT)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    batch = models.OneToOneField(JournalBatch, on_delete=models.RESTRICT)
+    objects = ServiceOnlyQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Une conversion comptabilisée est immuable.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les conversions sont conservées.")
 
 
 class DistributionMode(models.TextChoices):
@@ -468,6 +516,15 @@ class DistributionPolicyShare(models.Model):
     policy = models.ForeignKey(DistributionPolicy, on_delete=models.CASCADE, related_name="shares")
     stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="distribution_shares")
     percent = models.DecimalField(max_digits=7, decimal_places=4)
+    objects = ServiceOnlyQuerySet.as_manager()
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding or not writing.get():
+            raise ValidationError("Les bénéficiaires sont figés à la création de la politique.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Les bénéficiaires de la politique sont conservés.")
 
     class Meta:
         constraints = [

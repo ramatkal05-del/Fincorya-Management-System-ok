@@ -9,8 +9,10 @@ from decimal import Decimal
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 
+from apps.accounts.models import Role, User
 from apps.accounts.permissions import finance_policy, require_finance_access
 from apps.audit.services import record as audit_record
+from apps.notifications.services import notify
 from config.business_time import business_day_bounds
 from .cutover import active_cutover
 from .events import _project_cash, _validate_cash_payment, counterpart, line, record_event
@@ -116,13 +118,21 @@ def contributed_total(party, currency):
 @ledger_atomic
 def initiate_transfer(*, actor, client_key, source_id, destination_id, amount, fee=0, note=""):
     """Take funds out of the source; they sit in transit until confirmed."""
-    require_finance_access(actor, "prepare")
+    require_transfer_access(actor)
     _engine_required()
     existing = InternalTransfer.objects.filter(client_key=client_key).first()
     if existing:
+        if (existing.initiated_by_id, existing.source_id, existing.destination_id, existing.amount, existing.fee) != (
+                actor.pk, source_id, destination_id, _amount(amount), Decimal(fee or 0)):
+            raise ValidationError("Cette clé désigne un autre transfert.")
         return existing
     source = FinancialAccount.objects.select_for_update().get(pk=source_id)
     destination = FinancialAccount.objects.select_for_update().get(pk=destination_id)
+    if finance_policy(actor).own_cash_only:
+        if (source.account_type != AccountType.AGENT_CASH or source.responsible_user_id != actor.pk
+                or destination.account_type != AccountType.AGENT_CASH
+                or not destination.responsible_user_id or destination.responsible_user_id == actor.pk):
+            raise PermissionDenied("Un agent transfère uniquement de sa propre caisse vers celle d’un autre agent.")
     if source.pk == destination.pk:
         raise ValidationError("La source et la destination doivent être différentes.")
     _treasury(source, source.currency_id)
@@ -133,6 +143,10 @@ def initiate_transfer(*, actor, client_key, source_id, destination_id, amount, f
     _validate_cash_payment(source, source.currency_id, amount + fee)
     transfer = InternalTransfer.objects.create(client_key=client_key, source=source, destination=destination, currency=source.currency,
         amount=amount, fee=fee, note=note, initiated_by=actor, initiated_at=timezone.now())
+    for admin in User.objects.filter(role=Role.ADMIN, is_active=True):
+        notify(recipient=admin, subject="Transfert interne initié",
+               body=f"Transfert #{transfer.pk} de {amount} {source.currency.code} de {source.code} vers {destination.code} est en transit. Validation finale requise après réception.",
+               level="INFO")
     # TRANSIT is a liability-natured account: a DEBIT there represents funds in flight that we still own.
     lines = [line(source, "CREDIT", amount + fee), line(counterpart(source.currency, AccountType.TRANSIT), "DEBIT", amount)]
     if fee:
@@ -145,13 +159,38 @@ def initiate_transfer(*, actor, client_key, source_id, destination_id, amount, f
 
 
 @ledger_atomic
+def receive_transfer(*, actor, transfer_id):
+    """Mark an in-transit transfer as physically received, keeping funds unavailable until admin final validation."""
+    require_transfer_access(actor)
+    transfer = InternalTransfer.objects.select_for_update().get(pk=transfer_id)
+    if finance_policy(actor).own_cash_only and transfer.destination.responsible_user_id != actor.pk:
+        raise PermissionDenied("Seul l’agent destinataire peut confirmer cette réception.")
+    if transfer.return_confirmed_at:
+        raise ValidationError("Le retour des fonds est déjà confirmé.")
+    if transfer.status == TransferStatus.RECEIVED:
+        return transfer
+    if transfer.status != TransferStatus.INITIATED:
+        raise ValidationError("Seul un transfert en transit peut être marqué comme reçu.")
+    transfer.received_by, transfer.received_at = actor, timezone.now()
+    transfer.status = TransferStatus.RECEIVED
+    transfer.save(update_fields=["received_by", "received_at", "status"])
+    for admin in User.objects.filter(role=Role.ADMIN, is_active=True):
+        notify(recipient=admin, subject="Transfert reçu — validation finale requise",
+               body=f"Transfert #{transfer.pk} de {transfer.amount} {transfer.currency.code} vers {transfer.destination.code} a été marqué reçu. Validation finale par un admin nécessaire.",
+               level="WARNING")
+    audit_record(actor=actor, action="TRANSFER_RECEIVE", instance=transfer)
+    return transfer
+
+
+@ledger_atomic
 def confirm_transfer(*, actor, transfer_id):
+    """Final admin validation: credit the destination and release funds."""
     require_finance_access(actor, "approve")
     transfer = InternalTransfer.objects.select_for_update().get(pk=transfer_id)
     if transfer.status == TransferStatus.CONFIRMED:
         return transfer
-    if transfer.status != TransferStatus.INITIATED:
-        raise ValidationError("Seul un transfert en transit peut être confirmé.")
+    if transfer.status != TransferStatus.RECEIVED or transfer.return_confirmed_at:
+        raise ValidationError("Seul un transfert reçu peut être validé finalement.")
     destination = FinancialAccount.objects.select_for_update().get(pk=transfer.destination_id)
     transfer.confirmed_by, transfer.confirmed_at = actor, timezone.now()
     transfer.settlement_batch = record_event(actor=actor, source=transfer, event="TRANSFER_CONFIRM", effective_at=transfer.confirmed_at,
@@ -170,8 +209,10 @@ def cancel_transfer(*, actor, transfer_id, reason):
     transfer = InternalTransfer.objects.select_for_update().get(pk=transfer_id)
     if transfer.status == TransferStatus.CANCELLED:
         return transfer
-    if transfer.status != TransferStatus.INITIATED or not reason.strip():
-        raise ValidationError("Seul un transfert en transit peut être annulé, avec un motif.")
+    if transfer.status not in {TransferStatus.INITIATED, TransferStatus.RECEIVED} or not reason.strip():
+        raise ValidationError("Seul un transfert non validé peut être annulé, avec un motif.")
+    if not transfer.return_confirmed_at:
+        raise ValidationError("Confirmez le retour effectif des fonds avec un justificatif avant tout recrédit.")
     source = FinancialAccount.objects.select_for_update().get(pk=transfer.source_id)
     transfer.settlement_batch = record_event(actor=actor, source=transfer, event="TRANSFER_CANCEL", effective_at=timezone.now(),
         description=f"Annulation transfert #{transfer.pk}: {reason.strip()}",
@@ -187,6 +228,35 @@ def in_transit(currency):
     return ledger_balance(counterpart(currency, AccountType.TRANSIT)) * -1
 
 
+def require_transfer_access(actor):
+    policy = finance_policy(actor)
+    if not (policy.prepare or policy.own_cash_only):
+        raise PermissionDenied("Vous ne pouvez pas effectuer de transfert interne.")
+    return policy
+
+
+@ledger_atomic
+def confirm_transfer_return(*, actor, transfer_id, note):
+    """Record physical return to the source; only admin cancellation releases transit."""
+    policy = require_transfer_access(actor)
+    transfer = InternalTransfer.objects.select_for_update().get(pk=transfer_id)
+    if policy.own_cash_only and transfer.source.responsible_user_id != actor.pk:
+        raise PermissionDenied("Seul l’agent expéditeur peut confirmer le retour dans sa caisse.")
+    if transfer.status not in {TransferStatus.INITIATED, TransferStatus.RECEIVED}:
+        raise ValidationError("Ce transfert est déjà terminé.")
+    if transfer.return_confirmed_at:
+        return transfer
+    if len(note.strip()) < 5:
+        raise ValidationError("Documentez le retour effectif : reçu, référence ou justification vérifiée.")
+    transfer.return_confirmed_by, transfer.return_confirmed_at = actor, timezone.now()
+    transfer.return_note = note.strip()
+    transfer.save(update_fields=["return_confirmed_by", "return_confirmed_at", "return_note"])
+    audit_record(actor=actor, action="TRANSFER_RETURN", instance=transfer, after={"note": note.strip()})
+    for admin in User.objects.filter(role=Role.ADMIN, is_active=True):
+        notify(recipient=admin, subject="Retour de transfert confirmé", body=f"Transfert #{transfer.pk} : retour confirmé. Annulation à valider.")
+    return transfer
+
+
 # --------------------------------------------------------------------------- partners
 
 def guarantee_balance(party, currency):
@@ -194,10 +264,12 @@ def guarantee_balance(party, currency):
 
 
 def assert_partner_ceiling(party, operation):
-    """Each partner operation must respect the per-operation ceiling and the guarantee actually held."""
+    """Active funded guarantee and configured ceiling; exposure may exceed the guarantee."""
     guarantee = PartnerGuarantee.objects.filter(stakeholder=party, is_active=True).select_related("currency").first()
     if guarantee is None:
         raise ValidationError(f"{party.name} : aucune garantie active ; plafond par opération non défini.")
+    if operation.amount_usd > ceiling_limit():
+        raise ValidationError(f"Une opération partenaire ne peut pas dépasser {ceiling_limit()} USD.")
     if guarantee.currency_id == operation.currency_id:
         exposure = operation.amount
     elif guarantee.currency.code == "USD":
@@ -207,13 +279,13 @@ def assert_partner_ceiling(party, operation):
     if exposure > guarantee.per_operation_ceiling:
         raise ValidationError(f"Opération de {exposure} {guarantee.currency.code} au-dessus du plafond partenaire ({guarantee.per_operation_ceiling}).")
     held = guarantee_balance(party, guarantee.currency)
-    if exposure > held:
-        raise ValidationError(f"Opération de {exposure} {guarantee.currency.code} au-dessus de la garantie détenue ({held}).")
+    if held <= 0:
+        raise ValidationError("La garantie active doit disposer d’un solde positif.")
 
 
 def ceiling_limit():
     from django.conf import settings
-    return Decimal(str(getattr(settings, "PARTNER_CEILING_MAX_USD", "2000")))
+    return min(Decimal("2000"), Decimal(str(getattr(settings, "PARTNER_CEILING_MAX_USD", "2000"))))
 
 
 @ledger_atomic
@@ -223,7 +295,8 @@ def set_partner_guarantee(*, actor, stakeholder_id, currency, per_operation_ceil
     from apps.stakeholders.models import Stakeholder
     party = Stakeholder.objects.get(pk=stakeholder_id, type="PARTNER")
     ceiling = _amount(per_operation_ceiling)
-    if currency.code == "USD" and ceiling > ceiling_limit():
+    from apps.pricing.services import to_usd
+    if to_usd(ceiling, currency) > ceiling_limit():
         raise ValidationError(f"Le plafond par opération ne peut pas dépasser {ceiling_limit()} USD.")
     guarantee, _ = PartnerGuarantee.objects.update_or_create(stakeholder=party, defaults={
         "currency": currency, "per_operation_ceiling": ceiling, "is_active": is_active, "updated_by": actor})

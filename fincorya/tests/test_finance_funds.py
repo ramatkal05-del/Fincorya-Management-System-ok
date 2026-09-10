@@ -2,6 +2,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase, override_settings
@@ -11,9 +12,9 @@ from apps.expenses.models import Expense
 from apps.expenses.services import decide_expense
 from apps.finance.closing import approve_distributions, close_period, propose_distribution
 from apps.finance.events import counterpart
-from apps.finance.funds import (cancel_transfer, confirm_transfer, contributed_total, decide_request, execute_request,
-                                guarantee_balance, in_transit, initiate_transfer, record_contribution, submit_request)
-from apps.finance.models import AccountType, DistributionPolicy, FinancialAccount, JournalBatch, StakeholderRequest
+from apps.finance.funds import (cancel_transfer, confirm_transfer, confirm_transfer_return, contributed_total, decide_request, execute_request,
+                                guarantee_balance, in_transit, initiate_transfer, receive_transfer, record_contribution, submit_request)
+from apps.finance.models import AccountType, DistributionPolicy, EconomicRule, FinancialAccount, JournalBatch, StakeholderRequest
 from apps.finance.results import split_amount
 from apps.finance.services import ledger_balance
 from apps.profits.models import Distribution, ProfitPeriod
@@ -66,6 +67,7 @@ class FundOriginTests(FinanceScenario, TestCase):
             self.assertEqual(initiate_transfer(actor=self.admin, client_key='t-1', source_id=self.service_account.pk, destination_id=self.cash.pk, amount=Decimal('300')).pk, transfer.pk)
             self.assertEqual(in_transit(self.usd), Decimal('300'))
             self.assertEqual(ledger_balance(self.service_account) + ledger_balance(self.cash) + in_transit(self.usd), treasury_before)
+            receive_transfer(actor=self.admin, transfer_id=transfer.pk)
             confirm_transfer(actor=self.admin, transfer_id=transfer.pk)
             confirm_transfer(actor=self.admin, transfer_id=transfer.pk)
         self.assertEqual(in_transit(self.usd), Decimal('0'))
@@ -73,11 +75,40 @@ class FundOriginTests(FinanceScenario, TestCase):
         self.legacy.refresh_from_db()
         self.assertEqual(self.legacy.balance, ledger_balance(self.cash))
 
+    def test_transfer_requires_receive_then_admin_validation_and_notifies(self):
+        from apps.notifications.models import Notification
+        self.contribute()
+        destination_before = ledger_balance(self.cash)
+        with patch('django.utils.timezone.now', return_value=JULY):
+            transfer = initiate_transfer(actor=self.admin, client_key='t-cycle', source_id=self.service_account.pk,
+                destination_id=self.cash.pk, amount=Decimal('300'))
+            self.assertEqual(in_transit(self.usd), Decimal('300'))
+            self.assertEqual(ledger_balance(self.cash), destination_before)
+            self.assertTrue(Notification.objects.filter(recipient=self.admin, subject__icontains='Transfert interne initié').exists())
+            # Confirmation de réception : fonds toujours indisponibles
+            with self.assertRaises(ValidationError):
+                confirm_transfer(actor=self.admin, transfer_id=transfer.pk)
+            receive_transfer(actor=self.admin, transfer_id=transfer.pk)
+            transfer.refresh_from_db()
+            self.assertEqual(transfer.status, 'RECEIVED')
+            self.assertEqual(transfer.received_by, self.admin)
+            self.assertEqual(ledger_balance(self.cash), destination_before)
+            self.assertTrue(Notification.objects.filter(recipient=self.admin, subject__icontains='validation finale').exists())
+            # Validation finale admin : un seul crédit
+            confirm_transfer(actor=self.admin, transfer_id=transfer.pk)
+            confirm_transfer(actor=self.admin, transfer_id=transfer.pk)
+            transfer.refresh_from_db()
+            self.assertEqual(transfer.status, 'CONFIRMED')
+            self.assertEqual(transfer.confirmed_by, self.admin)
+            self.assertEqual(ledger_balance(self.cash), destination_before + Decimal('300'))
+            self.assertEqual(in_transit(self.usd), Decimal('0'))
+
     def test_transfer_fee_is_an_expense_and_cancellation_returns_transit_funds(self):
         with patch('django.utils.timezone.now', return_value=JULY):
             transfer = initiate_transfer(actor=self.admin, client_key='t-fee', source_id=self.service_account.pk, destination_id=self.cash.pk, amount=Decimal('100'), fee=Decimal('2'))
             self.assertEqual(ledger_balance(self.service_account), Decimal('1898'))
             self.assertEqual(ledger_balance(counterpart(self.usd, AccountType.EXPENSE, category='TRANSFER_FEE')), Decimal('2'))
+            confirm_transfer_return(actor=self.admin, transfer_id=transfer.pk, note='Funds returned by provider')
             cancel_transfer(actor=self.admin, transfer_id=transfer.pk, reason='Provider failure')
         self.assertEqual(ledger_balance(self.service_account), Decimal('1998'))
         self.assertEqual(in_transit(self.usd), Decimal('0'))
@@ -139,13 +170,34 @@ class PartnerRuleTests(FinanceScenario, TestCase):
         with self.assertRaises(ValidationError):
             self.operation('no-guarantee', partner=Stakeholder.objects.get(name='Partner without guarantee'))
 
+    def test_operation_can_exceed_guarantee_balance_but_not_ceiling(self):
+        """Guarantee 1100, ceiling 2000, operation 1500 must be authorized."""
+        from apps.operations.services import create_sent_transfer
+        from apps.finance.funds import set_partner_guarantee
+        small_partner = Stakeholder.objects.create(name='Small guarantee partner', type='PARTNER')
+        EconomicRule.objects.create(stakeholder=small_partner, kind='COMMISSION', value=60, effective_from=date(2026, 7, 1), created_by=self.admin)
+        set_partner_guarantee(actor=self.admin, stakeholder_id=small_partner.pk, currency=self.usd, per_operation_ceiling=Decimal('2000'))
+        with patch('django.utils.timezone.now', return_value=datetime(2026, 6, 3, 12, tzinfo=ZoneInfo('Europe/Istanbul'))):
+            record_contribution(actor=self.admin, client_key='small-guarantee', origin='PARTNER_GUARANTEE', stakeholder_id=small_partner.pk,
+                amount=Decimal('1100'), currency=self.usd, received_on=date(2026, 6, 3), account_id=self.service_account.pk)
+        self.assertEqual(guarantee_balance(small_partner, self.usd), Decimal('1100'))
+        with patch('django.utils.timezone.now', return_value=JULY):
+            op = create_sent_transfer(agent=self.agent, account_id=self.legacy.pk, amount=Decimal('1500'), tariff_schedule=self.tariff,
+                stakeholder=small_partner, commission_owner_confirmed=True, idempotency_key='over-guarantee-within-ceiling')
+        self.assertEqual(op.amount, Decimal('1500'))
+        self.assertEqual(JournalBatch.objects.filter(event_type='OPERATION', source_id=op.pk).count(), 1)
+
 
 @override_settings(FINANCE_LEDGER_ENABLED=True, LOCAL_AUTH_BYPASS=False, MFA_ENABLED=False, SECURE_SSL_REDIRECT=False)
 class ResultAndDistributionTests(FinanceScenario, TestCase):
     def setUp(self):
         super().setUp()
-        DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        policy = DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
         self.shareholders = [Stakeholder.objects.create(name=f'Equal shareholder {i}', type='SHAREHOLDER') for i in range(4)]
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        for sh in self.shareholders:
+            save_internal(DistributionPolicyShare(policy=policy, stakeholder=sh, percent=Decimal('25')))
         self.investor = Stakeholder.objects.create(name='Investor', type='INVESTOR')
 
     def charge(self, amount, category, agent=None, stakeholder=None):
@@ -238,7 +290,11 @@ class ResultAndDistributionTests(FinanceScenario, TestCase):
             close_period(period_id=month.pk, actor=self.admin)
         profit = ProfitPeriod.objects.get(finance_period=month)
         before = (profit.net_profit, profit.snapshot)
-        DistributionPolicy.objects.create(mode='RULE_PERCENT', effective_from=date(2026, 8, 1), created_by=self.admin)
+        new_policy = DistributionPolicy.objects.create(mode='RULE_PERCENT', effective_from=date(2026, 8, 1), created_by=self.admin)
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        for sh in self.shareholders:
+            save_internal(DistributionPolicyShare(policy=new_policy, stakeholder=sh, percent=Decimal('25')))
         from apps.pricing.models import ExchangeRate
         ExchangeRate.objects.create(currency=self.usd, rate_to_usd=Decimal('1.5'), effective_at=AUGUST, created_by=self.admin)
         profit.refresh_from_db()
@@ -251,11 +307,16 @@ class ResultAndDistributionTests(FinanceScenario, TestCase):
 class StakeholderRequestTests(FinanceScenario, TestCase):
     def setUp(self):
         super().setUp()
-        DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        policy = DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
         self.holder_user = User.objects.create_user(email='holder@test.local', role=Role.SHAREHOLDER)
         self.other_user = User.objects.create_user(email='other-holder@test.local', role=Role.SHAREHOLDER)
         self.holder = Stakeholder.objects.create(name='Holder', type='SHAREHOLDER', owner=self.holder_user)
-        self.other = Stakeholder.objects.create(name='Other holder', type='SHAREHOLDER', owner=self.other_user)
+        self.other_holder = Stakeholder.objects.create(name='Other holder', type='SHAREHOLDER', owner=self.other_user)
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        for sh in (self.holder, self.other_holder):
+            save_internal(DistributionPolicyShare(policy=policy, stakeholder=sh, percent=Decimal('50')))
+        self.other = self.other_holder
         self.operation()
         self.operation('second')
         month = self.period()

@@ -99,7 +99,7 @@ Points restant ouverts : nouvelle caisse agent créée après la bascule (néces
 | A1 | Rémunération des investisseurs : montant fixe, % du capital investi ou % du résultat ? | `Stakeholder.investor_return_percent` existe (rendement annuel). Le calcul du résultat déduit les rémunérations **comptabilisées comme charges** (catégorie `INVESTOR_RETURN`), jamais un montant déduit deux fois. La règle de calcul automatique reste à confirmer par l'admin. |
 | A2 | Écarts de change et réévaluation | Tracés séparément (compte `FX_DIFFERENCE`), exclus du résultat distribuable tant que l'admin n'a pas confirmé leur traitement. |
 | A3 | Actionnaire également agent (Ruth) | Le rôle agent donne accès à sa caisse ; le rôle actionnaire donne la lecture globale. Les deux se cumulent sans droit de modification global. |
-| A4 | Position négative Fantiny (−369 USD) | Non convertie en écriture (cf. `confirmed_brief.json`). Reprise manuelle à documenter. |
+| A4 | Position négative mentionnée dans le brief | Non convertie en écriture. Reprise manuelle à documenter par l'admin après vérification (voir annexe historique du guide). |
 | A5 | Convention de semaine | Lundi → dimanche, fuseau Europe/Istanbul, paramétrable. |
 | A6 | Date d'entrée en vigueur de la répartition égalitaire | Paramètre `DistributionPolicy.effective_from` à saisir par l'admin ; par défaut aucune politique → clôture mensuelle refusée tant qu'elle n'est pas définie. |
 

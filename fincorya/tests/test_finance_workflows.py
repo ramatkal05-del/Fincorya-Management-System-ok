@@ -57,7 +57,12 @@ class FinanceScenario:
         self.tariff = TariffSchedule.objects.create(name='Test', currency=self.usd, is_published=True)
         TariffTier.objects.create(schedule=self.tariff, min_amount=Decimal('.01'), max_amount=5000, fixed_fee=100)
         # Old distribution rule (dated percentages) stays in force for the historical scenarios.
-        DistributionPolicy.objects.create(mode='RULE_PERCENT', effective_from=date(2026, 6, 1), created_by=self.admin)
+        policy = DistributionPolicy.objects.create(mode='RULE_PERCENT', effective_from=date(2026, 6, 1), created_by=self.admin)
+        self.shareholders = [Stakeholder.objects.create(name=f'Equal shareholder {i}', type='SHAREHOLDER') for i in range(4)]
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        for sh in self.shareholders:
+            save_internal(DistributionPolicyShare(policy=policy, stakeholder=sh, percent=Decimal('25')))
         # A service account (not a legacy cash box) receives the partner guarantee.
         self.service_account = FinancialAccount.objects.create(code='MPESA-USD-1', name='M-Pesa USD compte 1', account_type='MOBILE_MONEY', nature='ASSET', currency=self.usd)
         set_partner_guarantee(actor=self.admin, stakeholder_id=self.partner.pk, currency=self.usd, per_operation_ceiling=Decimal('1500'))

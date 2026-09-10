@@ -21,7 +21,7 @@ def _operations_for(user):
     rows = Operation.objects.select_related("agent", "currency", "account")
     if user.role == Role.AGENT:
         return rows.filter(agent=user)
-    if user.role == Role.ADMIN:
+    if user.role in {Role.ADMIN, Role.FINANCE_MANAGER, Role.SHAREHOLDER}:
         return rows
     return rows.none()
 
@@ -119,6 +119,8 @@ def operation_detail(request, reference):
 @require_POST
 @mfa_required
 def operation_cancel(request, reference):
+    if request.user.role not in {Role.ADMIN, Role.AGENT}:
+        raise PermissionDenied
     operation = get_object_or_404(_operations_for(request.user), reference=reference)
     form = OperationCancellationForm(request.POST)
     if form.is_valid():

@@ -9,6 +9,8 @@
     </div>
     <nav>
       <p class="nav-kicker">Pilotage</p>
+      {% if request.user.role == 'AGENT' %}<a class="workspace-link" href="{% url 'finance:workspace' 'transfers' %}"><span>Transferts internes</span></a>{% endif %}
+      {% if request.user.role == 'SHAREHOLDER' or request.user.role == 'FINANCE_MANAGER' %}<a class="workspace-link" href="{% url 'operations:list' %}"><span>Toutes les opérations</span></a>{% endif %}
       {% if request.user.role == 'ADMIN' or request.user.role == 'FINANCE_MANAGER' %}
       <a class="workspace-link {% if request.resolver_match.namespace == 'finance' %}active{% endif %}" href="{% url 'finance:overview' %}" {% if request.resolver_match.namespace == 'finance' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16v18H4zM8 7h8M8 11h3m3 0h2M8 15h3m3 0h2"/></svg><span>Finance</span></a>
       {% endif %}

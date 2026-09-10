@@ -77,7 +77,7 @@ class ReportAccessTests(FinanceScenario, TestCase):
         self.assertEqual(self.client.post(reverse('finance:batch_create')).status_code, 403)
         self.assertEqual(self.client.post(reverse('finance:contribution_create')).status_code, 403)
         self.assertEqual(self.client.get(reverse('operations:create')).status_code, 403)
-        self.assertNotContains(self.client.get(reverse('operations:list')), str(self.legacy.operations.first().reference))
+        self.assertContains(self.client.get(reverse('operations:list')), str(self.legacy.operations.first().reference))
         report = build_report(user=self.holder_user, kind='ACTIVITY', preset='MONTH', anchor=date(2026, 7, 15))
         self.assertEqual(len(report['sections'][-1]['rows']), 1)
 
@@ -95,7 +95,11 @@ class ReportAccessTests(FinanceScenario, TestCase):
         self.assertEqual(report['status'], 'PROVISOIRE')
 
     def test_exports_and_screen_share_the_same_totals_and_escape_formulas(self):
-        DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        policy = DistributionPolicy.objects.create(mode='EQUAL_SHARES', effective_from=date(2026, 7, 1), created_by=self.admin)
+        from apps.finance.locking import save_internal
+        from apps.finance.models import DistributionPolicyShare
+        for sh in self.shareholders:
+            save_internal(DistributionPolicyShare(policy=policy, stakeholder=sh, percent=Decimal('25')))
         month = self.period()
         self.count_all(month)
         with patch('django.utils.timezone.now', return_value=AUGUST):

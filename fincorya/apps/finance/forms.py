@@ -135,6 +135,14 @@ class TransferForm(forms.Form):
     fee = forms.DecimalField(label="Frais de transfert (charge FINCORYA)", required=False, min_value=0, decimal_places=2, max_digits=18)
     note = forms.CharField(label="Motif", required=False, max_length=255)
 
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        from apps.accounts.permissions import finance_policy
+        if finance_policy(user).own_cash_only:
+            self.fields["source_id"].queryset = TREASURY_QUERYSET.filter(account_type="AGENT_CASH", responsible_user=user)
+            self.fields["destination_id"].queryset = TREASURY_QUERYSET.filter(
+                account_type="AGENT_CASH", responsible_user__role="AGENT", responsible_user__is_active=True).exclude(responsible_user=user)
+
     def clean(self):
         data = super().clean()
         source, destination = data.get("source_id"), data.get("destination_id")
@@ -157,8 +165,8 @@ class PolicyForm(forms.Form):
     """Admin selects existing shareholders, the mode and the effective date; percentages must total 100."""
     mode = forms.ChoiceField(label="Mode de répartition", choices=DistributionMode.choices, initial="EQUAL_SHARES")
     effective_from = forms.DateField(label="Date d’entrée en vigueur", widget=forms.DateInput(attrs={"type": "date"}))
-    shareholders = forms.ModelMultipleChoiceField(label="Actionnaires concernés (déjà créés par l’admin ; vide = tous les actionnaires actifs)",
-                                                  required=False, queryset=Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("name"),
+    shareholders = forms.ModelMultipleChoiceField(label="Bénéficiaires (sélection obligatoire ; politique initiale : quatre actionnaires à 25 %)",
+                                                  required=True, queryset=Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("name"),
                                                   widget=forms.CheckboxSelectMultiple)
     notes = forms.CharField(label="Notes", required=False, max_length=255)
 
@@ -302,6 +310,13 @@ class StakeholderRequestForm(forms.Form):
         self.fields["distribution_id"].queryset = Distribution.objects.filter(stakeholder=party, approval_batch__isnull=False, status="DUE").select_related("allocation__period__currency")
         if party.type != "SHAREHOLDER":
             self.fields.pop("distribution_id")
+
+
+class CommissionChoiceForm(forms.Form):
+    from .models import CommissionDestination
+    destination = forms.ChoiceField(label="Destination de mes nouvelles commissions (60 %)", choices=CommissionDestination.choices)
+    effective_at = forms.DateTimeField(label="Date d’effet (facultative, sinon immédiatement)", required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}))
 
 
 class DecisionForm(forms.Form):

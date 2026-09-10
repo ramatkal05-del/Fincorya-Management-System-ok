@@ -60,7 +60,8 @@ def allowed_kinds(user):
 
 
 def can_download(user):
-    return user.role in set(getattr(settings, "REPORT_DOWNLOAD_ROLES", [Role.ADMIN, Role.FINANCE_MANAGER, Role.AGENT]))
+    return bool(getattr(user, "is_active", False) and user.role in set(
+        getattr(settings, "REPORT_DOWNLOAD_ROLES", [Role.ADMIN, Role.FINANCE_MANAGER, Role.AGENT])))
 
 
 def week_start():

@@ -30,4 +30,5 @@ urlpatterns = [
     path("politiques/nouvelle/", views.policy_create, name="policy_create"),
     path("demandes/<int:pk>/", views.request_decide, name="request_decide"),
     path("mon-espace/", views.party_space, name="party_space"),
+    path("mon-espace/commissions/", views.commission_choice, name="commission_choice"),
 ]

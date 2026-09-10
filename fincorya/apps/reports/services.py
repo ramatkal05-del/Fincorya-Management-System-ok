@@ -63,6 +63,11 @@ def _style_workbook(workbook):
 
 
 def operation_report_snapshot(*, user, start_date, end_date):
+    from django.core.exceptions import PermissionDenied
+    if not user.is_active or user.role not in {Role.ADMIN, Role.AGENT}:
+        raise PermissionDenied("Ce rapport est réservé à l’administrateur et à l’agent concerné.")
+    if user.role == Role.AGENT and (start_date != end_date or start_date > timezone.localdate()):
+        raise PermissionDenied("Un agent télécharge uniquement son rapport quotidien, passé ou en cours.")
     period_start, period_end = business_day_bounds(start_date, end_date)
     operations = Operation.objects.select_related("currency", "agent").filter(
         created_at__gte=period_start,

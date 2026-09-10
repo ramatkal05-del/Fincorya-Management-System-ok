@@ -94,16 +94,12 @@ def distribution_plan(period, *, on_date=None):
     if policy.effective_from > period.start_date:
         raise ValidationError("La politique de distribution change en cours de mois ; période à qualifier.")
     shares = list(policy.shares.select_related("stakeholder").order_by("stakeholder_id"))
+    if not shares:
+        raise ValidationError("Sélection explicite des bénéficiaires obligatoire : créez une politique datée avec ses actionnaires.")
+    if any(share.stakeholder.type != "SHAREHOLDER" for share in shares):
+        raise ValidationError("La politique ne peut désigner que des actionnaires.")
     if policy.mode in {DistributionMode.EQUAL_SHARES, DistributionMode.CAPITAL_PROPORTIONAL}:
-        if shares:
-            selected = [share.stakeholder_id for share in shares]
-        elif policy.mode == DistributionMode.EQUAL_SHARES:
-            # No explicit selection: equal shares among every active shareholder.
-            selected = list(Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("pk").values_list("pk", flat=True))
-        else:
-            selected = list(Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("pk").values_list("pk", flat=True))
-        if not selected:
-            raise ValidationError("Aucun actionnaire actif à rémunérer ; sélectionnez-les dans la politique de distribution.")
+        selected = [share.stakeholder_id for share in shares]
         if policy.mode == DistributionMode.EQUAL_SHARES:
             weights = [{"stakeholder_id": party_id, "weight": "1"} for party_id in selected]
         else:
@@ -116,15 +112,9 @@ def distribution_plan(period, *, on_date=None):
             if not weights:
                 raise ValidationError("Aucun apport en capital enregistré : la répartition proportionnelle est impossible.")
     else:
-        weights = []
-        for party in Stakeholder.objects.filter(financial_rules__kind=RuleKind.DIVIDEND).distinct().order_by("pk"):
-            rule = effective_rule(party, RuleKind.DIVIDEND, on_date)
-            if rule:
-                if rule.effective_from > period.start_date:
-                    raise ValidationError("Une règle de distribution change en cours de mois ; période à qualifier.")
-                weights.append({"stakeholder_id": party.pk, "weight": str(rule.value), "rule_id": rule.pk})
-        if weights and sum((Decimal(row["weight"]) for row in weights), ZERO) != 100:
-            raise ValidationError("Les règles datées de dividende ne totalisent pas 100 %.")
+        weights = [{"stakeholder_id": share.stakeholder_id, "weight": str(share.percent)} for share in shares]
+        if sum((Decimal(row["weight"]) for row in weights), ZERO) != 100:
+            raise ValidationError("Les pourcentages de la politique ne totalisent pas 100 %.")
     return {"policy_id": policy.pk, "mode": policy.mode, "effective_from": str(policy.effective_from), "weights": weights}
 
 

@@ -59,6 +59,11 @@ def report_list(request):
 @mfa_required
 def report_download(request, public_id):
     export = get_object_or_404(ReportExport, public_id=public_id, requested_by=request.user, status="READY")
+    from apps.finance.reporting import can_download, allowed_kinds
+    if not can_download(request.user):
+        raise PermissionDenied("Le téléchargement n’est pas autorisé pour votre rôle actuel.")
+    if export.kind.startswith("FINANCE_") and export.kind.removeprefix("FINANCE_") not in allowed_kinds(request.user):
+        raise PermissionDenied("Ce rapport n’est plus disponible pour votre rôle.")
     if not export.file:
         raise Http404("Rapport indisponible.")
     try:

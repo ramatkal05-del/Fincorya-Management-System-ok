@@ -104,6 +104,9 @@ def record_operation(operation, actor):
     if supplier_fee:
         lines.append(line(counterpart(operation.currency, AccountType.EXPENSE, category="SUPPLIER_FEE"), "DEBIT", supplier_fee))
     result = record_event(actor=actor, source=operation, event="OPERATION", effective_at=operation.created_at, lines=lines)
+    if partner_fee:
+        from .commissions import convert_automatic_commission
+        convert_automatic_commission(operation=operation, party=attribution.stakeholder, amount=partner_fee, actor=actor)
     operation.account.refresh_from_db()
     _assert_projection(account, operation.account)
     return result

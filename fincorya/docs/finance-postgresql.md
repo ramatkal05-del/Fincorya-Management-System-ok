@@ -62,11 +62,10 @@ demande une qualification explicite au lieu d'un prorata inventé.
 
 ## Préparation des données confirmées et incertaines
 
-`apps/finance/data/confirmed_brief.json` conserve les montants confirmés
-(50 USD pour David, Victoria et Chris ; 40 USD pour Joseph ; aucune
-rémunération pour Ruth et Fantiny ; commissions 60/40 ; quatre parts de 25 %)
-et les incertitudes historiques séparément. Le fichier ne crée aucune identité,
-aucun compte ni aucune écriture.
+`apps/finance/data/confirmed_brief.json` conserve les montants mentionnés
+dans le brief contextuel et les incertitudes historiques séparément. Le fichier
+ne crée aucune identité, aucun compte ni aucune écriture. Les montants restent
+non validés tant que l'admin ne les a pas explicitement confirmés et rattachés.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py stage_finance_import apps/finance/data/confirmed_brief.json --actor-email <administrateur>
