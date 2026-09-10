@@ -168,6 +168,7 @@ Reproduire la liste du `render.yaml` (section `envVars`).
 | Variable | Production | Description |
 |---|---|---|
 | `FINANCE_LEDGER_ENABLED` | `False` | Activer **uniquement** après une bascule réconciliée et approuvée |
+| `ADMIN_PASSWORD` | *(secret)* | Surchage le mot de passe admin (défaut : `fincorya2026`) |
 
 ### Rapports
 
@@ -213,38 +214,48 @@ curl -I https://<votre-app>.onrender.com/static/css/base.css
 
 ## 7. Création du premier administrateur
 
-Le déploiement ne crée **aucun utilisateur**. Après le premier déploiement :
+Le déploiement crée **automatiquement** l'administrateur initial
+(`fincoryagroup@gmail.com`) via la commande `create_admin` exécutée
+pendant le build (`build.sh`) et la phase `release` (`Procfile`).
 
-### 7.1. Via le shell Render
+### 7.1. Mot de passe
 
-1. Dashboard Render → service `fincorya` → **Shell**
-2. Exécuter :
+L'administrateur `fincoryagroup@gmail.com` est créé avec le mot de passe
+par défaut **`fincorya2026`**. Pour le surcharger au déploiement, définir
+la variable d'environnement `ADMIN_PASSWORD` dans le dashboard Render.
 
-```bash
-python manage.py shell
+> **Changez ce mot de passe dès la première connexion** via le menu
+> profil → Changer le mot de passe.
+
+### 7.2. Vérifier la création
+
+Dans les logs de déploiement Render, vous verrez :
+
+```
+Administrateur créé : fincoryagroup@gmail.com (Admin FINCORYA)
+Mot de passe appliqué depuis ADMIN_PASSWORD.
 ```
 
-```python
-from apps.accounts.models import Role, User
-admin = User.objects.create_user(
-    email="admin@fincorya.com",
-    password="MOT_DE_PASSE_FORT",
-    role=Role.ADMIN,
-    first_name="Prénom",
-    last_name="Nom",
-)
-admin.is_active = True
-admin.is_staff = True
-admin.is_superuser = True
-admin.save()
+Ou si l'admin existe déjà :
+
+```
+L'administrateur fincoryagroup@gmail.com existe déjà — aucune action.
 ```
 
-### 7.2. Configurer TOTP (MFA obligatoire)
+### 7.3. Configurer TOTP (MFA obligatoire)
 
-1. Se connecter avec l'administrateur
+1. Se connecter avec `fincoryagroup@gmail.com` et le mot de passe défini
 2. Au premier login, Django-OTP demande de configurer un appareil TOTP
 3. Scanner le QR code avec une application (Google Authenticator, Authy, etc.)
 4. Valider le code à 6 chiffres
+
+### 7.4. Changer le mot de passe (recommandé)
+
+Après la première connexion :
+
+1. Menu profil → **Changer le mot de passe**
+2. Saisir le mot de passe actuel et un nouveau mot de passe fort
+3. La session reste active après le changement
 
 ---
 
@@ -387,6 +398,9 @@ python manage.py showmigrations
 
 # Créer un superutilisateur
 python manage.py shell
+
+# Recréer l'admin initial (idempotent)
+python manage.py create_admin
 
 # Collecter les statics manuellement
 python manage.py collectstatic --noinput

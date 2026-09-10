@@ -1,2 +1,2 @@
 web: gunicorn config.wsgi:application --chdir fincorya --bind 0.0.0.0:$PORT --workers 3 --timeout 120
-release: cd fincorya && python manage.py migrate --noinput && python manage.py collectstatic --noinput
+release: cd fincorya && python manage.py migrate --noinput && python manage.py collectstatic --noinput && python manage.py create_admin

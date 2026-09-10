@@ -189,6 +189,8 @@ if ENVIRONMENT == "production":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 FINANCE_LEDGER_ENABLED = env("FINANCE_LEDGER_ENABLED", default=False, cast=as_bool)
+# Mot de passe de l'administrateur initial (créé par create_admin au déploiement).
+ADMIN_PASSWORD = env("ADMIN_PASSWORD", default="")
 # Reporting conventions: week start (0 = lundi … 6 = dimanche) and roles allowed to download files.
 FINANCE_WEEK_START = env("FINANCE_WEEK_START", default=0, cast=int)
 REPORT_DOWNLOAD_ROLES = [role.strip() for role in env("REPORT_DOWNLOAD_ROLES", default="ADMIN,FINANCE_MANAGER,AGENT").split(",") if role.strip()]

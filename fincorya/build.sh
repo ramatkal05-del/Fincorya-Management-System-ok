@@ -17,4 +17,7 @@ python manage.py collectstatic --noinput
 # 4. Appliquer les migrations de base de données
 python manage.py migrate --noinput
 
+# 5. Créer l'administrateur initial (idempotent)
+python manage.py create_admin
+
 echo "=== Build terminé ==="
