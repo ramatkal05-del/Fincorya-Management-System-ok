@@ -100,6 +100,7 @@ Si vous préférez configurer manuellement :
 3. Database : `fincorya`, User : `fincorya_app`
 4. Plan : Starter minimum
 5. Noter la **Internal Database URL** fournie
+postgresql://fincorya_app:ByjP6j2cnOETcrZeKIjxox5ibrkry9KX@dpg-dahen195efls73dp0ln0-a/fincorya
 
 ### 4.2. Créer le service web
 
