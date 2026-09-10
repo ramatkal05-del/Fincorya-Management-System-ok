@@ -4,27 +4,6 @@ from apps.accounts.models import Role, User
 from apps.stakeholders.models import Stakeholder, StakeholderType
 
 
-class OperationReportForm(forms.Form):
-    start_date = forms.DateField(label="Du", widget=forms.DateInput(attrs={"type": "date"}))
-    end_date = forms.DateField(label="Au", widget=forms.DateInput(attrs={"type": "date"}))
-    format = forms.ChoiceField(label="Format", choices=(("PDF", "PDF"), ("XLSX", "Excel"), ("CSV", "CSV")))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        today = timezone.localdate()
-        self.fields["start_date"].initial = today
-        self.fields["end_date"].initial = today
-
-    def clean(self):
-        cleaned = super().clean()
-        start, end = cleaned.get("start_date"), cleaned.get("end_date")
-        if start and end and start > end:
-            raise forms.ValidationError("La date de début doit précéder la date de fin.")
-        if start and end and (end - start).days > 366:
-            raise forms.ValidationError("La période ne peut pas dépasser 366 jours.")
-        return cleaned
-
-
 class FinanceReportForm(forms.Form):
     """Report centre: explicit period presets with visible dates, server-side kind restriction."""
     kind = forms.ChoiceField(label="Rapport")

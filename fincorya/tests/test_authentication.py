@@ -178,8 +178,8 @@ class ProtectedWorkflowViewTests(TestCase):
 
     def test_monthly_report_form_accepts_stakeholder_type_filter(self):
         self.verified_login(self.admin)
-        response = self.client.post(reverse("reports:list"), {
-            "report_kind": "MONTHLY", "year": date.today().year,
+        response = self.client.post(reverse("reports:monthly"), {
+            "year": date.today().year,
             "month": date.today().month, "agent": "", "stakeholder": "",
             "stakeholder_type": "", "format": "CSV",
         })
@@ -194,8 +194,8 @@ class ProtectedWorkflowViewTests(TestCase):
 
     def test_report_download_is_private_to_requester(self):
         self.verified_login(self.admin)
-        response = self.client.post(reverse("reports:list"), {
-            "start_date": date.today().isoformat(), "end_date": date.today().isoformat(), "format": "CSV",
+        response = self.client.get(reverse("reports:center"), {
+            "kind": "ACTIVITY", "preset": "DAY", "anchor": date.today().isoformat(), "format": "CSV",
         })
         location = response["Location"]
         self.client.logout()

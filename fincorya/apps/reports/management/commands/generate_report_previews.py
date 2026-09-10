@@ -1,11 +1,12 @@
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.accounts.models import Role, User
-from apps.reports.services import _monthly_pdf, _pdf_bytes, monthly_financial_snapshot, operation_report_snapshot
+from apps.finance.reporting import build_report
+from apps.reports.services import _finance_pdf, _monthly_pdf, monthly_financial_snapshot
 
 
 class Command(BaseCommand):
@@ -20,9 +21,9 @@ class Command(BaseCommand):
         output_dir.mkdir(parents=True, exist_ok=True)
         today = date.today()
 
-        operations = operation_report_snapshot(user=user, start_date=today - timedelta(days=30), end_date=today)
+        activity = build_report(user=user, kind="ACTIVITY", preset="MONTH", anchor=today)
         operations_path = output_dir / "fincorya-operations-report-preview.pdf"
-        operations_path.write_bytes(_pdf_bytes(operations, user))
+        operations_path.write_bytes(_finance_pdf(activity, user))
 
         monthly = monthly_financial_snapshot(user=user, year=today.year, month=today.month)
         monthly_path = output_dir / "fincorya-report-preview.pdf"

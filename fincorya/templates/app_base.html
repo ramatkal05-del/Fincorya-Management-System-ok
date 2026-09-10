@@ -26,7 +26,6 @@
         <p class="nav-kicker">Flux financiers</p>
         <a class="workspace-link {% if request.resolver_match.namespace == 'operations' %}active{% endif %}" href="{% url 'operations:list' %}" {% if request.resolver_match.namespace == 'operations' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3m3 3-3 3M17 17H5l3 3m-3-3 3-3"/></svg><span>Opérations</span></a>
         <a class="workspace-link {% if request.resolver_match.namespace == 'cash' %}active{% endif %}" href="{% url 'cash:list' %}" {% if request.resolver_match.namespace == 'cash' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v12H3zM16 11h5v4h-5M3 7l13-3v3"/></svg><span>Caisses</span></a>
-        <a class="workspace-link {% if request.resolver_match.namespace == 'reports' %}active{% endif %}" href="{% url 'reports:list' %}" {% if request.resolver_match.namespace == 'reports' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10m5 10V5m6 15v-8m5 8V3"/></svg><span>Rapports</span></a>
       {% endif %}
       {% if request.user.role == 'ADMIN' %}
         <p class="nav-kicker">Administration</p>
