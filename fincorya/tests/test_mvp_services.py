@@ -212,6 +212,10 @@ class FincoryaServiceTestCase(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(self.account.balance, Decimal("1045.00"))
 
+    def test_operation_rejects_oversized_idempotency_key(self):
+        with self.assertRaises(ValidationError):
+            create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule, idempotency_key="k" * 65)
+
     def test_operation_stores_service_and_customer_details(self):
         operation = create_sent_transfer(
             agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule,

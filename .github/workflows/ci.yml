@@ -10,10 +10,29 @@ permissions:
 jobs:
   django:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: fincorya_ci
+          POSTGRES_USER: fincorya_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fincorya_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     defaults:
       run:
         working-directory: fincorya
     env:
+      DB_HOST: "127.0.0.1"
+      DB_PORT: "5432"
+      DB_NAME: fincorya_ci
+      DB_USER: fincorya_ci
+      DB_PASSWORD: ci-only-password
       DEBUG: "True"
       DJANGO_SECRET_KEY: ci-only-secret-key-not-for-production
       MFA_ENABLED: "True"
