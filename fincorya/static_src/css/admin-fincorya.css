@@ -1,5 +1,6 @@
-@font-face{font-family:Inter;src:url('../assets/fonts/Inter-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
-@font-face{font-family:Inter;src:url('../assets/fonts/Inter-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Inter;src:url('/static/assets/fonts/Inter-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Inter;src:url('/static/assets/fonts/Inter-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Inter;src:url('/static/assets/fonts/Inter-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
 :root,html[data-theme="light"],html[data-theme="dark"]{
  --primary:#006b4f;--secondary:#013b36;--accent:#fff;--primary-fg:#fff;
  --body-fg:#18201f;--body-bg:#f7f8f5;--body-quiet-color:#5f6b67;--body-medium-color:#46564f;
