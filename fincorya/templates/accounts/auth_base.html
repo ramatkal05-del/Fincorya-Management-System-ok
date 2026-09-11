@@ -5,11 +5,23 @@
 
   <section class="fc-auth-layout" aria-label="Authentification FINCORYA">
     <div class="fc-auth-brand">
+      <div class="fc-auth-grid" aria-hidden="true"></div>
+      <div class="fc-auth-glow fc-auth-glow-a" aria-hidden="true"></div>
+      <div class="fc-auth-glow fc-auth-glow-b" aria-hidden="true"></div>
       <div class="fc-auth-identity">
-        <a class="fc-auth-logo" href="{% url 'accounts:login' %}" aria-label="FINCORYA Group — Accueil de connexion"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}" alt="FINCORYA Group"></a>
+        <a class="fc-auth-logo" href="{% url 'accounts:login' %}" aria-label="FINCORYA Group — Accueil de connexion"><img src="{% static 'img/fincorya-group-logo-fr.svg' %}?v=3" alt="FINCORYA Group"></a>
+        <div class="fc-auth-wordmark"><strong>FINCORYA</strong><span>GROUP</span></div>
       </div>
-      <div class="fc-auth-copy"><span>Plateforme sécurisée — Système de Gestion Interne</span><h1>Pilotez vos opérations en toute confiance.</h1><p>Un espace interne sécurisé pour vos caisses, opérations et rapports financiers.</p></div>
-      <div class="fc-auth-photo" aria-hidden="true"></div>
+      <div class="fc-auth-copy">
+        <span class="fc-auth-eyebrow">Plateforme sécurisée — Système de Gestion Interne</span>
+        <h1>Pilotez vos opérations en toute confiance.</h1>
+        <p>Un espace interne sécurisé pour vos caisses, opérations et rapports financiers.</p>
+      </div>
+      <ul class="fc-auth-trust" aria-label="Garanties de sécurité">
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.8 3 8.8 7 10 4-1.2 7-5.2 7-10V6l-7-3Z"/></svg><span>Chiffrement de bout en bout</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span>Double authentification</span></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m6 7v-3"/></svg><span>Piste d’audit continue</span></li>
+      </ul>
     </div>
     <div class="fc-auth-form">
       <div class="auth-card">
