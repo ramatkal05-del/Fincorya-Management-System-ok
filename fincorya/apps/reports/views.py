@@ -1,9 +1,11 @@
 from pathlib import Path
 
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse, Http404
+from django.conf import settings
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
+from django.urls import reverse
 
 from apps.accounts.models import Role
 from apps.accounts.views import mfa_required
@@ -28,6 +30,8 @@ def report_center(request):
                 report = build_report(user=request.user, kind=data["kind"], preset=data["preset"], anchor=data["anchor"], custom_end=data.get("custom_end"), filters=form.filters())
             else:
                 export = generate_finance_report(user=request.user, kind=data["kind"], preset=data["preset"], anchor=data["anchor"], custom_end=data.get("custom_end"), format=data["format"], filters=form.filters())
+                if request.htmx:
+                    return HttpResponse(headers={"HX-Redirect": reverse("reports:download", args=[export.public_id])})
                 return redirect("reports:download", public_id=export.public_id)
         except (PermissionDenied, ValueError) as exc:
             error = str(exc)
@@ -36,11 +40,12 @@ def report_center(request):
     exports = ReportExport.objects.filter(requested_by=request.user, kind__in=[
         *(f"FINANCE_{kind}" for kind in allowed_kinds(request.user)), "MONTHLY_FINANCIAL",
     ]).order_by("-created_at")[:30]
-    monthly_form = MonthlyReportForm() if request.user.role == Role.ADMIN else None
+    monthly_form = MonthlyReportForm(auto_id="monthly_%s") if request.user.role == Role.ADMIN else None
     template = "reports/_center_result.html" if request.htmx else "reports/center.html"
     return render(request, template, {
         "form": form, "report": report, "error": error, "exports": exports,
         "can_download": can_download(request.user), "monthly_form": monthly_form,
+        "business_timezone": settings.BUSINESS_TIME_ZONE,
     })
 
 
@@ -52,7 +57,7 @@ def monthly_report_create(request):
     kept on the same screen instead of a second, overlapping report menu."""
     if request.user.role != Role.ADMIN:
         raise PermissionDenied("Le rapport mensuel consolidé est réservé à l’administrateur.")
-    form = MonthlyReportForm(request.POST)
+    form = MonthlyReportForm(request.POST, auto_id="monthly_%s")
     if form.is_valid():
         export = generate_monthly_report(user=request.user, **form.cleaned_data)
         return redirect("reports:download", public_id=export.public_id)
@@ -63,6 +68,7 @@ def monthly_report_create(request):
     return render(request, "reports/center.html", {
         "form": FinanceReportForm(user=request.user), "report": None, "error": None,
         "exports": exports, "can_download": can_download(request.user), "monthly_form": form,
+        "business_timezone": settings.BUSINESS_TIME_ZONE,
     })
 
 

@@ -13,6 +13,17 @@ class ReportExport(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def display_title(self):
+        from apps.finance.reporting import REPORT_KINDS
+        if self.kind == "MONTHLY_FINANCIAL":
+            return "Rapport mensuel consolidé"
+        return REPORT_KINDS.get(self.kind.removeprefix("FINANCE_"), self.kind)
+
+    @property
+    def display_status(self):
+        return {"PENDING": "En préparation", "READY": "Disponible", "FAILED": "Échec"}.get(self.status, self.status)
+
     class Meta:
         indexes = [
             models.Index(fields=["requested_by", "-created_at"], name="report_owner_date_idx"),

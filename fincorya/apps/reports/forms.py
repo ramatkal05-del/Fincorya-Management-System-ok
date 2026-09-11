@@ -8,8 +8,8 @@ class FinanceReportForm(forms.Form):
     """Report centre: explicit period presets with visible dates, server-side kind restriction."""
     kind = forms.ChoiceField(label="Rapport")
     preset = forms.ChoiceField(label="Période", choices=(("DAY", "Journée"), ("WEEK", "Semaine"), ("MONTH", "Mois"), ("QUARTER", "Trimestre"), ("YEAR", "Année"), ("CUSTOM", "Personnalisée")))
-    anchor = forms.DateField(label="Date de référence (début pour une période personnalisée)", widget=forms.DateInput(attrs={"type": "date"}))
-    custom_end = forms.DateField(label="Fin (période personnalisée)", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    anchor = forms.DateField(label="Date de référence", help_text="Pour une période personnalisée, choisissez la date de début.", widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}))
+    custom_end = forms.DateField(label="Date de fin", help_text="À renseigner uniquement pour une période personnalisée.", required=False, widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}))
     agent = forms.ModelChoiceField(label="Agent", required=False, queryset=User.objects.none(), empty_label="Tous les agents")
     service = forms.ChoiceField(label="Service", required=False)
     status = forms.ChoiceField(label="Statut d’opération", required=False)
@@ -19,12 +19,13 @@ class FinanceReportForm(forms.Form):
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         from apps.finance.reporting import allowed_kinds, can_download
-        from apps.operations.models import OperationStatus, TransactionService
+        from apps.operations.models import OperationStatus
+        from apps.operations.forms import OperationFilterForm
         kinds = allowed_kinds(user)
         self.fields["kind"].choices = list(kinds.items())
         self.fields["anchor"].initial = timezone.localdate()
         self.fields["agent"].queryset = User.objects.filter(role=Role.AGENT, is_active=True).order_by("first_name", "email")
-        self.fields["service"].choices = (("", "Tous les services"), *TransactionService.choices)
+        self.fields["service"].choices = OperationFilterForm().fields["service"].choices
         self.fields["status"].choices = (("", "Tous les statuts"), *OperationStatus.choices)
         if user.role == Role.AGENT:
             self.fields["preset"].choices = (("DAY", "Journée"),)

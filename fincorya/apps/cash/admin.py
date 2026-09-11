@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
-from config.admin import ValidatedServiceAdmin
+from config.admin import ArchiveAdminMixin, ValidatedServiceAdmin
 
 from apps.audit.services import record
 from .models import CashAccount, CashFunding, CashMovement, GlobalCashAccount, GlobalCashMovement
@@ -8,7 +8,7 @@ from .services import adjust_global_cash, allocate_cash
 
 
 @admin.register(CashAccount)
-class CashAccountAdmin(ValidatedServiceAdmin):
+class CashAccountAdmin(ArchiveAdminMixin, ValidatedServiceAdmin):
     list_display = ("agent", "currency", "global_account", "balance", "is_active", "allocated_by", "allocated_at")
     list_filter = ("is_active", "currency")
     search_fields = ("agent__email", "agent__first_name", "agent__last_name")
@@ -28,7 +28,7 @@ class CashAccountAdmin(ValidatedServiceAdmin):
 
 
 @admin.register(GlobalCashAccount)
-class GlobalCashAccountAdmin(ValidatedServiceAdmin):
+class GlobalCashAccountAdmin(ArchiveAdminMixin, ValidatedServiceAdmin):
     list_display = ("currency", "administrator", "balance", "capital", "is_active", "created_at")
     list_filter = ("is_active", "currency")
     search_fields = ("currency__code", "administrator__email")

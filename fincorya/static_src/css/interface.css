@@ -231,6 +231,47 @@ tbody tr:hover { background:#f5faf7; }
   .fc-chart { padding:16px 12px; } .fc-chart-bars,.fc-chart-labels { gap:6px; }
   .panel-heading { padding:16px; } .fc-auth .auth-card h2 { font-size:24px; }
 }
+/* Personal workspace and reports share the same card rhythm and field sizing. */
+.workflow-grid>*,.panel,.panel-heading>div,.field { min-width:0; }
+.panel-heading { gap:12px; flex-wrap:wrap; }
+.panel-body { padding:20px; }
+.panel-body>.form-stack { margin:20px 0 0; }
+.panel-body>p:first-child { margin-top:0; }
+.party-layout { grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr); }
+.party-sidebar { display:grid; gap:20px; min-width:0; }
+.party-situation.report-card { margin-top:0; }
+.party-sidebar .panel-body { font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+.party-sidebar .button-row .button { width:100%; }
+.choice-history { border-top:1px solid var(--line); margin-top:20px; padding-top:12px; }
+.choice-history summary { padding:10px 0; font-weight:600; cursor:pointer; }
+.request-history-item+.request-history-item { border-top:1px solid var(--line); margin-top:16px; padding-top:16px; }
+.request-history-heading { display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:8px; }
+.request-history-heading h3 { margin:0; font-size:14px; }
+.request-history-item p { margin:8px 0 0; }
+.report-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:0; padding:20px; background:#f8fbf9; border-bottom:1px solid var(--line); }
+.report-meta dt { color:var(--text-muted); font-size:12px; margin-bottom:6px; }
+.report-meta dd { margin:0; font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.report-card .table-wrap { margin:0; max-width:100%; }
+.report-card .table-wrap+.table-wrap { border-top:1px solid var(--line); }
+.report-card caption { text-align:left; padding:20px 16px 12px; color:var(--brand-secondary); font-size:14px; font-weight:600; }
+.report-card caption.sr-only { padding:0; }
+.financial-form.report-form>.field { grid-column:auto; }
+.financial-form.report-form .form-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:12px; }
+.report-form .form-actions .button { width:auto; }
+.field input:not([type="checkbox"]):not([type="radio"]),.field select,.field textarea { font:inherit; font-size:14px; max-width:100%; }
+.field input[type="checkbox"],.field input[type="radio"] { width:18px; min-height:18px; height:18px; padding:0; accent-color:var(--brand-primary); }
+.status-ready,.status-executed { color:#116c4e; background:#e7f6ef; }
+.status-failed { color:#9c3027; background:#fcecea; }
+@media (max-width:1100px) {
+  .party-layout,.report-layout { grid-template-columns:minmax(0,1fr); }
+  .report-layout .impact-panel { position:static; }
+}
+@media (max-width:560px) {
+  .panel-body,.report-meta { padding:16px; }
+  .report-meta { grid-template-columns:minmax(0,1fr); }
+  .report-form .form-actions .button { width:100%; }
+  .field input:not([type="checkbox"]):not([type="radio"]),.field select,.field textarea { font-size:16px; }
+}
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
 }

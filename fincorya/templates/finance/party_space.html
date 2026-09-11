@@ -3,22 +3,25 @@
 {% block context_name %}Mon espace {{ party.get_type_display|lower }}{% endblock %}
 {% block module_content %}
 <header class="page-hero"><div><p class="eyebrow">{{ party.get_type_display }}</p><h1>{{ party.name }}</h1><p>Votre situation personnelle et vos demandes. Les opérations affichées ne sont pas modifiables depuis cet espace.</p></div>
-{% if can_download %}<a class="button button-secondary" href="{% url 'reports:center' %}">Télécharger mes rapports</a>{% endif %}</header>
-<div class="workflow-grid">
-  <div hx-get="{% url 'finance:party_space' %}" hx-trigger="every 60s" hx-swap="outerHTML">{% include "finance/_party_situation.html" %}</div>
-  <aside class="panel">
+<a class="button button-secondary" href="{% url 'reports:center' %}">Consulter mes rapports</a></header>
+<div class="workflow-grid party-layout">
+  {% include "finance/_party_situation.html" %}
+  <aside class="party-sidebar">
+    <section class="panel">
     <div class="panel-heading"><div><p class="eyebrow">Demande</p><h2>Nouvelle demande</h2></div></div>
-    <p class="muted">Réinvestissement, retrait, augmentation ou conversion : rien ne bouge avant validation puis exécution par l’administration.</p>
-    <form method="post" class="form-stack" novalidate onsubmit="return confirm('Soumettre cette demande ?')">{% csrf_token %}{% include "_form_fields.html" with form=form %}<div class="button-row"><button class="button button-primary">Soumettre</button></div></form>
+    <div class="panel-body"><p class="muted">Soumettez votre demande. Les fonds seront mouvementés après validation et exécution par l’administration.</p>
+    <form method="post" class="form-stack" novalidate onsubmit="return confirm('Soumettre cette demande ?')">{% csrf_token %}{% include "_form_fields.html" with form=form %}<div class="button-row"><button class="button button-primary" type="submit">Soumettre la demande</button></div></form></div>
+    </section>
     {% if commission_form %}
-    <h3>Destination de mes commissions</h3>
+    <section class="panel"><div class="panel-heading"><h2>Destination de mes commissions</h2></div><div class="panel-body">
     <p>Choisissez la conversion automatique de vos 60 % en garantie ou leur conservation dans « Commissions à recevoir ». Les commissions déjà accumulées restent convertibles par une demande.</p>
     <form method="post" action="{% url 'finance:commission_choice' %}" class="form-stack">{% csrf_token %}{% include "_form_fields.html" with form=commission_form %}<button class="button button-primary">Enregistrer mon choix</button></form>
-    <h4>Historique des choix</h4>
+    <details class="choice-history"><summary>Historique des choix</summary>
     {% for choice in commission_choices %}<p>{{ choice.get_destination_display }} · effet {{ choice.effective_at|date:'d/m/Y H:i:s' }} · enregistré {{ choice.created_at|date:'d/m/Y H:i:s' }}</p>{% empty %}<p>Aucun choix enregistré : les commissions restent à recevoir.</p>{% endfor %}
-    {% endif %}
-    <h3>Mes demandes</h3>
-    {% for row in requests %}<p>{{ row.submitted_at|date:'d/m/Y' }} · {{ row.get_kind_display }} · {{ row.amount }} {{ row.currency.code }} · <span class="status-badge status-{{ row.status|lower }}">{{ row.get_status_display }}</span>{% if row.decision_comment %} · {{ row.decision_comment }}{% endif %}</p>{% empty %}<p class="muted">Aucune demande.</p>{% endfor %}
+    </details></div></section>{% endif %}
+    <section class="panel"><div class="panel-heading"><h2>Mes demandes</h2></div><div class="panel-body request-history">
+    {% for row in requests %}<article class="request-history-item"><div class="request-history-heading"><h3>{{ row.get_kind_display }}</h3><span class="status-badge status-{{ row.status|lower }}">{{ row.get_status_display }}</span></div><p><strong>{{ row.amount }} {{ row.currency.code }}</strong> · {{ row.submitted_at|date:'d/m/Y' }}</p>{% if row.decision_comment %}<p class="muted">{{ row.decision_comment }}</p>{% endif %}</article>{% empty %}<p class="muted">Aucune demande pour le moment.</p>{% endfor %}
+    </div></section>
   </aside>
 </div>
 {% endblock %}

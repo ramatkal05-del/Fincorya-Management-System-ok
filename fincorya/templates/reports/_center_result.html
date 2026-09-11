@@ -1,5 +1,6 @@
 {% load report_cells %}
 <div id="report-result">
+{% if form.errors and request.htmx %}<div class="alert alert-error" role="alert"><p>Corrigez les paramètres du rapport.</p><ul>{% for field in form %}{% for message in field.errors %}<li>{{ field.label }} : {{ message }}</li>{% endfor %}{% endfor %}{% for message in form.non_field_errors %}<li>{{ message }}</li>{% endfor %}</ul></div>{% endif %}
 {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
 {% if report %}
 <section class="panel report-card">
@@ -19,4 +20,5 @@
   {% endfor %}
 </section>
 {% endif %}
+{% if not report and not error and not form.errors %}<section class="panel report-card empty-state compact"><h2>Votre rapport apparaîtra ici</h2><p>Choisissez un rapport et une période, puis cliquez sur « Générer le rapport ».</p></section>{% endif %}
 </div>

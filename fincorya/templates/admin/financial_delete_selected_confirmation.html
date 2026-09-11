@@ -1,0 +1,7 @@
+{% extends "admin/delete_selected_confirmation.html" %}
+{% block content %}
+{% if perms_lacking or protected %}
+<div class="module"><h2>Conserver l’historique financier</h2><p>Les mouvements et opérations liés à cette sélection peuvent empêcher sa suppression. Ils sont protégés, même pour un superadministrateur.</p><p>Revenez à la liste et choisissez « Désactiver la sélection en conservant l’historique » pour désactiver les comptes sans effacer leurs écritures. Votre propre compte et les comptes que vous ne pouvez pas modifier sont exclus de cette action.</p></div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

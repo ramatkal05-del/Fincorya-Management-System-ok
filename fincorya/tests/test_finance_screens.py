@@ -60,3 +60,76 @@ class FinanceScreenTests(FinanceScenario, TestCase):
         self.assertEqual(request.status, 'EXECUTED')
         self.client.force_login(self.agent)
         self.assertEqual(self.client.get(reverse('finance:party_space')).status_code, 403)
+
+    def test_report_center_has_native_download_form_and_distinct_monthly_fields(self):
+        from html.parser import HTMLParser
+
+        class Elements(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.ids, self.forms = [], []
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if "id" in attrs:
+                    self.ids.append(attrs["id"])
+                if tag == "form":
+                    self.forms.append(attrs)
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('reports:center'))
+        self.assertContains(response, 'Rapport mensuel consolidé')
+        self.assertContains(response, 'Votre rapport apparaîtra ici')
+        parser = Elements()
+        parser.feed(response.content.decode())
+        self.assertEqual(len(parser.ids), len(set(parser.ids)))
+        report_form = next(form for form in parser.forms if form.get('action') == reverse('reports:center'))
+        self.assertNotIn('hx-get', report_form)
+
+    def test_report_errors_visible_for_normal_and_htmx_requests(self):
+        self.client.force_login(self.admin)
+        data = {'kind': 'TREASURY', 'preset': 'CUSTOM', 'anchor': '2026-07-15', 'format': 'HTML'}
+        for headers in [{}, {'HTTP_HX_REQUEST': 'true'}]:
+            response = self.client.get(reverse('reports:center'), data, **headers)
+            self.assertContains(response, 'Indiquez une date de fin')
+
+    def test_htmx_export_requests_trigger_a_real_download(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('reports:center'), {
+            'kind': 'TREASURY', 'preset': 'MONTH', 'anchor': '2026-07-15', 'format': 'CSV',
+        }, HTTP_HX_REQUEST='true')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('HX-Redirect', response)
+        download = self.client.get(response['HX-Redirect'])
+        self.assertEqual(download.status_code, 200)
+        self.assertIn('attachment', download['Content-Disposition'])
+        download.close()
+
+    def test_custom_services_are_available_in_report_filters(self):
+        from apps.operations.models import TransactionServiceOption
+        from apps.reports.forms import FinanceReportForm
+        TransactionServiceOption.objects.create(code='CUSTOM_WAVE', label='Wave historique', is_active=False)
+        form = FinanceReportForm(user=self.admin)
+        self.assertIn(('CUSTOM_WAVE', 'Wave historique'), form.fields['service'].choices)
+
+    def test_personal_situation_keeps_polling_after_each_refresh(self):
+        user = User.objects.create_user(email='polling-partner@test.local', role=Role.PARTNER)
+        self.partner.owner = user
+        self.partner.save(update_fields=['owner'])
+        self.client.force_login(user)
+        for headers in [{}, {'HTTP_HX_REQUEST': 'true'}, {'HTTP_HX_REQUEST': 'true'}]:
+            response = self.client.get(reverse('finance:party_space'), **headers)
+            self.assertContains(response, 'id="party-situation"', count=1)
+            self.assertContains(response, 'hx-trigger="every 60s"', count=1)
+            self.assertContains(response, 'hx-swap="outerHTML"', count=1)
+            if headers:
+                self.assertNotContains(response, 'Soumettre la demande')
+
+    def test_monthly_form_errors_are_rendered_and_exports_have_readable_labels(self):
+        from apps.reports.models import ReportExport
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('reports:monthly'), {'year': 'invalid', 'month': '7', 'format': 'CSV'})
+        self.assertContains(response, 'monthly_year_errors')
+        export = ReportExport.objects.create(requested_by=self.admin, kind='MONTHLY_FINANCIAL', format='CSV', status='READY')
+        self.assertEqual(export.display_title, 'Rapport mensuel consolidé')
+        self.assertEqual(export.display_status, 'Disponible')

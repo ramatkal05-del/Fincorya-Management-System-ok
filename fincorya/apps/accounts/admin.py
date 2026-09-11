@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from config.admin import ArchiveAdminMixin
 
 from .models import Role, User
 
@@ -25,7 +26,7 @@ class AccountChangeForm(UserChangeForm):
 
 
 @admin.register(User)
-class FincoryaUserAdmin(UserAdmin):
+class FincoryaUserAdmin(ArchiveAdminMixin, UserAdmin):
     add_form = AccountCreationForm
     form = AccountChangeForm
     ordering = ("email",)
@@ -44,28 +45,67 @@ class FincoryaUserAdmin(UserAdmin):
     )
 
     def has_module_permission(self, request):
-        return request.user.is_active and request.user.role == Role.ADMIN
+        return request.user.is_active and request.user.is_staff and (
+            request.user.is_superuser or request.user.role == Role.ADMIN
+            or super().has_module_permission(request)
+        )
 
     def has_view_permission(self, request, obj=None):
-        return self.has_module_permission(request)
+        return self.has_module_permission(request) and (
+            request.user.is_superuser or request.user.role == Role.ADMIN
+            or super().has_view_permission(request, obj)
+        )
 
     def has_add_permission(self, request):
-        return self.has_module_permission(request)
+        return self.has_module_permission(request) and (
+            request.user.is_superuser or request.user.role == Role.ADMIN
+            or super().has_add_permission(request)
+        )
 
     def has_change_permission(self, request, obj=None):
-        return self.has_module_permission(request)
+        if obj and obj.is_superuser and not request.user.is_superuser:
+            return False
+        if obj and obj.role == Role.ADMIN and not (request.user.is_superuser or request.user.role == Role.ADMIN):
+            return False
+        return self.has_module_permission(request) and (
+            request.user.is_superuser or request.user.role == Role.ADMIN
+            or super().has_change_permission(request, obj)
+        )
 
     def has_delete_permission(self, request, obj=None):
-        return self.has_module_permission(request) and (obj is None or obj.pk != request.user.pk)
+        if obj and (obj.pk == request.user.pk or (obj.is_superuser and not request.user.is_superuser)):
+            return False
+        if obj and obj.role == Role.ADMIN and not (request.user.is_superuser or request.user.role == Role.ADMIN):
+            return False
+        return self.has_module_permission(request) and (
+            request.user.is_superuser or request.user.role == Role.ADMIN
+            or super().has_delete_permission(request, obj)
+        )
 
     def get_fieldsets(self, request, obj=None):
         fields = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            fields += (("Autorisations Django", {
+                "fields": ("is_staff", "is_superuser", "groups", "user_permissions"),
+                "description": "Les groupes et permissions contrôlent l’administration Django. "
+                               "Le rôle FINCORYA définit les accès aux écrans financiers.",
+            }),)
         if obj and obj.role == Role.AGENT:
             fields += (("Activite agent", {"fields": ("agent_started_on", "agent_ended_on", "monthly_salary_usd")}),)
         return fields
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if not request.user.is_superuser and request.user.role != Role.ADMIN:
+            fields += ("role",)
+        if obj and obj.pk == request.user.pk:
+            fields += ("is_active", "is_staff", "is_superuser", "role")
+        return tuple(dict.fromkeys(fields))
+
     def save_model(self, request, obj, form, change):
-        obj.is_staff = obj.role == Role.ADMIN
-        if obj.role != Role.ADMIN:
-            obj.is_superuser = False
+        if not request.user.is_superuser:
+            if not change or "role" in form.changed_data:
+                obj.is_staff = obj.role == Role.ADMIN
+            if not change:
+                obj.is_superuser = False
         super().save_model(request, obj, form, change)

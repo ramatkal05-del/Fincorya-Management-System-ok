@@ -1,0 +1,7 @@
+{% extends "admin/delete_confirmation.html" %}
+{% block content %}
+{% if perms_lacking or protected %}
+<div class="module"><h2>Conserver l’historique financier</h2><p>Une suppression peut être bloquée par les mouvements, opérations ou autres écritures liés à cet élément. Ces écritures sont protégées, y compris pour un superadministrateur : accorder une permission de suppression ne lève pas cette protection.</p><p>Pour retirer cet élément des comptes actifs, revenez à la liste et choisissez l’action « Désactiver la sélection en conservant l’historique ».</p></div>
+{% endif %}
+{{ block.super }}
+{% endblock %}

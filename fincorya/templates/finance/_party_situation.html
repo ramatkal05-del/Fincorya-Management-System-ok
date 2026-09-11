@@ -1,5 +1,5 @@
 {% load report_cells %}
-<section class="panel report-card">
+<section id="party-situation" class="panel report-card party-situation" hx-get="{% url 'finance:party_space' %}" hx-trigger="every 60s" hx-swap="outerHTML">
   <div class="panel-heading"><div><p class="eyebrow">{{ situation.period.label }}</p><h2>Ma situation</h2></div><span class="muted">Actualisé à {{ refreshed_at|date:'H:i' }}</span></div>
   {% for section in situation.sections %}
   <div class="table-wrap"><table><caption>{{ section.title }}</caption>
