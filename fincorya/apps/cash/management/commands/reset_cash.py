@@ -8,7 +8,7 @@ delete guards) by using raw SQL. It deletes:
   - Cash movements (agent and global)
   - Operations, operation revisions, operation requests
   - Cash handovers, daily closures, cash fundings
-  - Finance journal entries and batches
+  - Finance journal entries and batches (if the ledger tables exist)
   - Commission conversions
   - Financial-account cached balances are reset to zero
 
@@ -45,17 +45,44 @@ class Command(BaseCommand):
         )
 
     # ------------------------------------------------------------------ #
-    #  Raw-SQL helpers — bypass ORM immutability guards                    #
+    #  Helpers                                                            #
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _truncate(cursor, table):
-        cursor.execute(f"DELETE FROM {table}")
+    def _table_exists(cursor, table):
+        """Check whether a table exists in the public schema."""
+        cursor.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = %s",
+            [table],
+        )
+        return cursor.fetchone() is not None
+
+    def _safe_delete(self, cursor, table):
+        """Delete all rows from *table* if it exists; skip silently otherwise."""
+        if not self._table_exists(cursor, table):
+            return
+        cursor.execute(f"SELECT COUNT(*) FROM {table}")
+        row = cursor.fetchone()
+        n = row[0] if row else 0
+        if n:
+            cursor.execute(f"DELETE FROM {table}")
+            self.stdout.write(f"  {table}: {n} ligne(s) supprimée(s)")
+
+    def _safe_update(self, cursor, sql, params=None):
+        """Run an UPDATE only if the target table exists."""
+        # Extract table name from "UPDATE <table> SET ..."
+        parts = sql.strip().split()
+        if len(parts) >= 2 and parts[0].upper() == "UPDATE":
+            table = parts[1]
+            if not self._table_exists(cursor, table):
+                return
+        cursor.execute(sql, params or [])
 
     def _reset_balances(self, cursor):
         """Reset cash account and global cash account balances to zero."""
-        cursor.execute("UPDATE cash_cashaccount SET balance = 0")
-        cursor.execute("UPDATE cash_globalcashaccount SET balance = 0")
-        cursor.execute("UPDATE finance_financialaccount SET cached_balance = 0")
+        self._safe_update(cursor, "UPDATE cash_cashaccount SET balance = 0")
+        self._safe_update(cursor, "UPDATE cash_globalcashaccount SET balance = 0")
+        self._safe_update(cursor, "UPDATE finance_financialaccount SET cached_balance = 0")
 
     # ------------------------------------------------------------------ #
     #  Main handler                                                       #
@@ -104,12 +131,7 @@ class Command(BaseCommand):
 
         with connection.cursor() as cursor:
             for table in sql_order:
-                count_before = cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                row = cursor.fetchone()
-                n = row[0] if row else 0
-                if n:
-                    self._truncate(cursor, table)
-                    self.stdout.write(f"  {table}: {n} ligne(s) supprimée(s)")
+                self._safe_delete(cursor, table)
 
             # Reset balances
             self._reset_balances(cursor)
@@ -148,54 +170,29 @@ class Command(BaseCommand):
         )
 
         with connection.cursor() as cursor:
-            # Tables with RESTRICT FK to auth_user that would block deletion.
-            # Most cash/operation tables are already empty from the reset,
-            # but finance/stakeholder/report tables may still hold rows.
-            restrict_tables = [
-                "finance_journalbatch",        # created_by, posted_by
-                "finance_financialperiod",      # locked_by
-                "finance_financialaccount",     # responsible_user
-                "finance_financecutover",       # requested_by, reviewed_by, approved_by
-                "finance_legacymigrationrun",   # created_by
-                "finance_stakeholderrule",      # created_by
-                "finance_stakeholdercontribution",  # created_by
-                "finance_distributionpolicy",   # created_by
-                "finance_partnercommissionchoice",  # chosen_by
-                "finance_partnerguarantee",     # updated_by
-                "finance_remunerationterms",    # updated_by
-                "finance_currencyconversion",   # created_by
-                "finance_profitdistributionrequest",  # submitted_by, decided_by
-                "reports_reportrequest",        # requested_by
-                "cash_globalcashaccount",       # administrator
-                "operations_operationrequest",  # actor
-            ]
-            for table in restrict_tables:
-                # Delete rows where any user FK column points to this user.
-                # We use a dynamic approach: find all FK columns referencing
-                # auth_user for each table.
+            # Dynamically find ALL tables with a RESTRICT FK to auth_user.
+            # This is more robust than a hardcoded list — it automatically
+            # handles tables that don't exist yet (e.g. finance ledger).
+            cursor.execute(
+                """
+                SELECT c.relname AS table_name, a.attname AS column_name
+                FROM   pg_constraint k
+                JOIN   pg_class c       ON c.oid = k.conrelid
+                JOIN   pg_class r      ON r.oid = k.confrelid
+                JOIN   pg_attribute a   ON a.attrelid = k.conrelid
+                                        AND a.attnum = ANY(k.conkey)
+                WHERE  k.contype = 'f'
+                  AND  r.relname = 'auth_user'
+                  AND  k.confdeltype = 'r'
+                """
+            )
+            restrict_refs = cursor.fetchall()
+
+            for table_name, col_name in restrict_refs:
                 cursor.execute(
-                    """
-                    SELECT a.attname
-                    FROM   pg_constraint k
-                    JOIN   pg_attribute a
-                           ON a.attrelid = k.conrelid
-                          AND a.attnum   = ANY(k.conkey)
-                    WHERE  k.contype = 'f'
-                      AND  k.confrelid = (
-                          SELECT oid FROM pg_class WHERE relname = 'auth_user'
-                      )
-                      AND  k.conrelid = (
-                          SELECT oid FROM pg_class WHERE relname = %s
-                      )
-                    """,
-                    [table],
+                    f"DELETE FROM {table_name} WHERE {col_name} = %s",
+                    [uid],
                 )
-                fk_cols = [r[0] for r in cursor.fetchall()]
-                for col in fk_cols:
-                    cursor.execute(
-                        f"DELETE FROM {table} WHERE {col} = %s",
-                        [uid],
-                    )
 
         # Now delete the user (CASCADE will clean up SET_NULL and CASCADE FKs)
         user.delete()
