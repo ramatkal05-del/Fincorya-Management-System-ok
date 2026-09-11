@@ -1,0 +1,27 @@
+{% extends "app_base.html" %}{% load form_accessibility %}
+{% block title %}Services de transaction — FINCORYA{% endblock %}
+{% block context_name %}Services de transaction{% endblock %}
+{% block module_content %}
+<header class="module-page-header"><div><p class="eyebrow">Configuration réservée à l’administrateur</p><h1>Services de transaction</h1><p class="muted">Ces services apparaissent dans le formulaire de saisie des agents (Transfert, Retrait). Les désactiver n’efface pas l’historique des opérations déjà enregistrées.</p></div></header>
+<div class="workflow-grid">
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">Ajouter</p><h2>Nouveau service</h2></div></div>
+    <form method="post" class="form-stack finance-form" novalidate>{% csrf_token %}
+      {% include "_form_fields.html" with form=form %}
+      <button class="button button-primary" type="submit">Enregistrer</button>
+    </form>
+  </section>
+  <section class="panel ledger-panel report-card">
+    <div class="panel-heading"><h2>Services existants</h2></div>
+    {% if services %}
+    <div class="table-wrap"><table><caption class="sr-only">Services de transaction</caption><thead><tr><th scope="col">Nom</th><th scope="col">Code</th><th scope="col">Statut</th><th scope="col">Action</th></tr></thead><tbody>
+    {% for service in services %}
+      <tr><td>{{ service.label }}</td><td>{{ service.code }}</td>
+      <td><span class="status-badge {% if service.is_active %}status-completed{% else %}status-cancelled{% endif %}">{% if service.is_active %}Actif{% else %}Inactif{% endif %}</span></td>
+      <td><form method="post" action="{% url 'operations:service_toggle' service.pk %}">{% csrf_token %}<button class="button button-secondary" type="submit">{% if service.is_active %}Désactiver{% else %}Réactiver{% endif %}</button></form></td></tr>
+    {% endfor %}
+    </tbody></table></div>
+    {% else %}<div class="empty-state compact"><h3>Aucun service</h3><p>Ajoutez le premier service à gauche.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

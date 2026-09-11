@@ -14,6 +14,13 @@ def active_service_choices():
     return options or list(TransactionService.choices)
 
 
+class TransactionServiceOptionForm(forms.ModelForm):
+    class Meta:
+        model = TransactionServiceOption
+        fields = ["code", "label"]
+        labels = {"code": "Code interne (ex. WESTERN_UNION)", "label": "Nom affiché aux agents"}
+
+
 class OperationForm(forms.Form):
     field_order = ["type", "account", "service", "customer_identifier", "customer_name",
                    "amount", "stakeholder", "commission_owner_confirmed", "note",

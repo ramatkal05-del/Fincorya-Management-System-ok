@@ -1,13 +1,12 @@
 from django.contrib import admin
 
-from .models import Operation, OperationRevision, TransactionServiceOption
+from .models import Operation, OperationRevision
 
-
-@admin.register(TransactionServiceOption)
-class TransactionServiceOptionAdmin(admin.ModelAdmin):
-    list_display = ("label", "code", "is_active", "created_at")
-    list_filter = ("is_active",)
-    search_fields = ("code", "label")
+# TransactionServiceOption is intentionally not registered here: managing it
+# through Django admin would depend on the separate staff/permission system
+# (a superuser could bypass the app's own "ADMIN role only" rule). It is
+# managed exclusively from Finance → Services → operations:service_list,
+# which checks request.user.role == Role.ADMIN directly.
 
 
 @admin.register(Operation)

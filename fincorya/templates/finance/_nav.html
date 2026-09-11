@@ -11,6 +11,7 @@
 <a class="button button-secondary" href="{% url 'finance:workspace' 'remunerations' %}">Rémunérations</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'conversions' %}">Conversions</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'services' %}">Services</a>
+{% if request.user.role == 'ADMIN' %}<a class="button button-secondary" href="{% url 'operations:service_list' %}">Services de transaction</a>{% endif %}
 <a class="button button-secondary" href="{% url 'finance:workspace' 'journal' %}">Journal</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'periods' %}">Clôtures</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'expenses' %}">Charges à payer</a>

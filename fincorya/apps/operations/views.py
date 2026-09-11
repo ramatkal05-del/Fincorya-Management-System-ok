@@ -12,8 +12,9 @@ from apps.accounts.views import mfa_required
 from apps.cash.models import CashAccount
 from apps.pricing.models import TariffSchedule
 from apps.pricing.services import current_rate_to_usd, from_usd, lookup_fee
-from .forms import OperationCancellationForm, OperationFilterForm, OperationForm, OperationRevisionForm
-from .models import Operation, OperationStatus, OperationType
+from .forms import (OperationCancellationForm, OperationFilterForm, OperationForm, OperationRevisionForm,
+                    TransactionServiceOptionForm)
+from .models import Operation, OperationStatus, OperationType, TransactionServiceOption
 from .services import cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer, revise_operation
 
 
@@ -169,3 +170,34 @@ def operation_pay(request, reference):
     else:
         messages.success(request, "Paiement enregistré une seule fois et caisse mise à jour.")
     return redirect("operations:detail", reference=reference)
+
+
+def _require_admin(user):
+    """Only the administrator may add or retire a transaction service; this
+    mirrors the finance workspace's own "administer" capability so the rule
+    does not depend on Django admin's separate staff/permission system."""
+    if user.role != Role.ADMIN:
+        raise PermissionDenied("Seul l'administrateur peut gérer les services de transaction.")
+
+
+@mfa_required
+def service_list(request):
+    _require_admin(request.user)
+    form = TransactionServiceOptionForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        service = form.save()
+        messages.success(request, f"Service « {service.label} » ajouté ; il est disponible immédiatement pour les agents.")
+        return redirect("operations:service_list")
+    services = TransactionServiceOption.objects.order_by("-is_active", "label")
+    return render(request, "operations/services.html", {"form": form, "services": services})
+
+
+@require_POST
+@mfa_required
+def service_toggle(request, pk):
+    _require_admin(request.user)
+    service = get_object_or_404(TransactionServiceOption, pk=pk)
+    service.is_active = not service.is_active
+    service.save(update_fields=["is_active"])
+    messages.success(request, f"Service « {service.label} » {'réactivé' if service.is_active else 'désactivé'}.")
+    return redirect("operations:service_list")
