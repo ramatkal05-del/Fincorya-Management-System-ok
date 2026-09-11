@@ -4,7 +4,7 @@
 {% block module_content %}
 <header class="page-hero"><h1>{{ title }}</h1></header>
 {% include "finance/_nav.html" %}
-<section class="panel"><form method="post" class="form-stack finance-form" novalidate{% if confirm %} onsubmit="return confirm('{{ confirm|escapejs }}')"{% endif %}>{% csrf_token %}
+<section class="panel"><form method="post" enctype="multipart/form-data" class="form-stack finance-form" novalidate{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>{% csrf_token %}
 {% include "_form_fields.html" with form=form %}
 {% if formset %}{{ formset.management_form }}{% if formset.non_form_errors %}<div class="alert alert-error" role="alert">{{ formset.non_form_errors.0 }}</div>{% endif %}{% for entry in formset %}<fieldset><legend>Écriture {{ forloop.counter }}</legend>{% include "_form_fields.html" with form=entry %}</fieldset>{% endfor %}{% endif %}
 <div class="button-row"><button class="button button-primary" type="submit">Enregistrer</button></div>

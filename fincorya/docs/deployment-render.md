@@ -79,7 +79,7 @@ Dans le dashboard Render, service `fincorya` → **Environment** :
 | `EMAIL_HOST` | `smtp.gmail.com` ou équivalent | |
 | `EMAIL_HOST_USER` | Adresse email d'envoi | |
 | `EMAIL_HOST_PASSWORD` | Mot de passe d'application | Gmail : mot de passe d'application, pas le mot de passe normal |
-| `ADMIN_PASSWORD` | *(optionnel)* | Mot de passe admin (défaut : `fincorya2026`) |
+| `ADMIN_PASSWORD` | *(requis à la création)* | Mot de passe secret de l'administrateur initial |
 
 > `DJANGO_SECRET_KEY` est auto-généré par Render (`generateValue: true`).
 > Les variables marquées `sync: false` doivent être définies manuellement.
@@ -200,7 +200,7 @@ Render fournit la connexion via des variables individuelles (pas `DATABASE_URL`)
 | Variable | Production | Description |
 |---|---|---|
 | `FINANCE_LEDGER_ENABLED` | `False` | Activer **uniquement** après une bascule réconciliée et approuvée |
-| `ADMIN_PASSWORD` | *(optionnel)* | Surcharge le mot de passe admin (défaut : `fincorya2026`) |
+| `ADMIN_PASSWORD` | *(requis à la création)* | Mot de passe secret de l'administrateur initial |
 
 ### Rapports
 
@@ -263,9 +263,10 @@ pendant le build (`build.sh`) et la phase `release` (`Procfile`).
 
 ### 7.1. Mot de passe
 
-L'administrateur `fincoryagroup@gmail.com` est créé avec le mot de passe
-par défaut **`fincorya2026`**. Pour le surcharger au déploiement, définir
-la variable d'environnement `ADMIN_PASSWORD` dans le dashboard Render.
+Avant la première création de l'administrateur `fincoryagroup@gmail.com`,
+définir un mot de passe secret dans la variable d'environnement
+`ADMIN_PASSWORD` du dashboard Render. Sans cette valeur, la commande échoue
+sans créer de compte. Un administrateur existant reste inchangé.
 
 > **Changez ce mot de passe dès la première connexion** via le menu
 > profil → Changer le mot de passe.

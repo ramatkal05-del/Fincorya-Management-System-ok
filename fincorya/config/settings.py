@@ -67,6 +67,7 @@ MIDDLEWARE = [
     "django_otp.middleware.OTPMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "apps.accounts.middleware.AdminMFAMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 

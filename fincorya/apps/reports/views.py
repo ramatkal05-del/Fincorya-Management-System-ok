@@ -72,6 +72,8 @@ def report_download(request, public_id):
     from apps.finance.reporting import can_download, allowed_kinds
     if not can_download(request.user):
         raise PermissionDenied("Le téléchargement n’est pas autorisé pour votre rôle actuel.")
+    if export.kind == "MONTHLY_FINANCIAL" and request.user.role != Role.ADMIN:
+        raise PermissionDenied("Le rapport mensuel consolidé est réservé à l’administrateur.")
     if export.kind.startswith("FINANCE_") and export.kind.removeprefix("FINANCE_") not in allowed_kinds(request.user):
         raise PermissionDenied("Ce rapport n’est plus disponible pour votre rôle.")
     if not export.file:

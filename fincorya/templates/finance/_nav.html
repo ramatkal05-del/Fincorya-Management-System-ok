@@ -1,5 +1,5 @@
 <nav class="finance-tabs" aria-label="Navigation finance">
-{% if not policy.own_cash_only %}
+{% if request.user.role == 'ADMIN' or request.user.role == 'FINANCE_MANAGER' %}
 <a class="button button-secondary" href="{% url 'finance:overview' %}">Comptes financiers</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'contributions' %}">Apports</a>
 <a class="button button-secondary" href="{% url 'finance:workspace' 'transfers' %}">Transferts</a>

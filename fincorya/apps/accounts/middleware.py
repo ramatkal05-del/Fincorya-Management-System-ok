@@ -1,5 +1,16 @@
 from django.conf import settings
 from django.contrib.auth import login
+from django.utils.deprecation import MiddlewareMixin
+
+
+class AdminMFAMiddleware(MiddlewareMixin):
+    """Apply the application's MFA gate to every resolved admin view."""
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        if settings.MFA_ENABLED and request.resolver_match.app_name == "admin":
+            from .views import mfa_required
+
+            return mfa_required(lambda request: None)(request)
 
 
 class LocalAuthenticationBypassMiddleware:

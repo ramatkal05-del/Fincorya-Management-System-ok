@@ -1,4 +1,3 @@
-from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
@@ -85,7 +84,7 @@ def closure_create(request, account_id):
 def closure_preview(request, account_id):
     account = get_object_or_404(_accounts_for(request.user), pk=account_id)
     try:
-        declared = Decimal(request.GET.get("declared_cash", ""))
-    except InvalidOperation:
+        declared = ClosureForm.base_fields["declared_cash"].clean(request.GET.get("declared_cash", ""))
+    except ValidationError:
         declared = None
     return render(request, "cash/_closure_preview.html", {"account": account, "declared": declared, "variance": declared - account.balance if declared is not None else None})

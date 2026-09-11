@@ -192,6 +192,7 @@ def send_email_otp(request):
     return redirect(f"{reverse('accounts:verify')}?method=email")
 
 
+@never_cache
 def verify_view(request):
     if not settings.MFA_ENABLED:
         return redirect("dashboard" if request.user.is_authenticated else "accounts:login")
@@ -230,11 +231,12 @@ def verify_view(request):
                 form.add_error("token", "Ce code e-mail a expiré. Demandez-en un nouveau.")
         else:
             recovery = next((code for code in user.recovery_codes.filter(used_at__isnull=True) if code.matches(token.upper())), None)
-            verified = recovery is not None
+            # Only the request that atomically consumes the unused code may log in.
+            verified = recovery is not None and user.recovery_codes.filter(
+                pk=recovery.pk, used_at__isnull=True,
+            ).update(used_at=timezone.now()) == 1
         if verified:
             if recovery is not None:
-                recovery.used_at = timezone.now()
-                recovery.save(update_fields=["used_at"])
                 messages.warning(request, "Code de récupération utilisé. Il ne sera plus valide.")
             _finish_mfa(request, user, method, device=device)
             clear_auth_failures(action="TOTP", identifier=throttle_key)

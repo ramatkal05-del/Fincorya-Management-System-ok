@@ -98,6 +98,10 @@ class TariffTier(models.Model):
         ]
 
     def clean(self):
+        # ModelForm calls clean even when individual fields are invalid, and
+        # inline forms can belong to a schedule that has not been saved yet.
+        if not self.schedule_id or self.min_amount is None or self.max_amount is None:
+            return
         overlapping = TariffTier.objects.filter(
             schedule=self.schedule,
             min_amount__lte=self.max_amount,

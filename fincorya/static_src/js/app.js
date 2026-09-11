@@ -26,6 +26,10 @@
   document.addEventListener("submit", (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || event.defaultPrevented) return;
+    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+      event.preventDefault();
+      return;
+    }
     if (form.hasAttribute("hx-get")) return;
     setBusy(form, true);
     if (form.matches("[data-login-form]")) setLoginStatus("Connexion sécurisée en cours…");
@@ -37,6 +41,10 @@
   });
 
   document.body.addEventListener("htmx:beforeSwap", (event) => {
+    if (event.detail.target?.id === "operation-preview" && event.detail.xhr.status === 422) {
+      event.detail.shouldSwap = true;
+      event.detail.isError = false;
+    }
     const form = event.detail.elt?.closest?.("[data-login-form]");
     if (!form) return;
     const destination = event.detail.xhr?.responseURL || "";

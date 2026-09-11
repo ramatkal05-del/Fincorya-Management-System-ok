@@ -88,9 +88,10 @@ def operation_create(request):
 def operation_preview(request):
     try:
         account = CashAccount.objects.select_related("currency", "agent").get(pk=request.GET.get("account"))
-        schedule = TariffSchedule.objects.get(pk=request.GET.get("tariff_schedule"), is_published=True, currency__code="USD")
+        from apps.pricing.services import active_tariff_schedule
+        schedule = active_tariff_schedule()
         amount = Decimal(request.GET.get("amount", "0"))
-        if amount <= 0:
+        if not amount.is_finite() or amount <= 0 or amount >= Decimal("1e14"):
             raise ValueError
         # Object authorization is enforced before any financial information is disclosed.
         allowed = account.agent_id == request.user.pk if request.user.role == Role.AGENT else request.user.role == Role.ADMIN

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils import timezone
+from config.admin import ValidatedServiceAdmin
 
 from apps.audit.services import record
 from .models import CashAccount, CashFunding, CashMovement, GlobalCashAccount, GlobalCashMovement
@@ -7,7 +8,7 @@ from .services import adjust_global_cash, allocate_cash
 
 
 @admin.register(CashAccount)
-class CashAccountAdmin(admin.ModelAdmin):
+class CashAccountAdmin(ValidatedServiceAdmin):
     list_display = ("agent", "currency", "global_account", "balance", "is_active", "allocated_by", "allocated_at")
     list_filter = ("is_active", "currency")
     search_fields = ("agent__email", "agent__first_name", "agent__last_name")
@@ -27,7 +28,7 @@ class CashAccountAdmin(admin.ModelAdmin):
 
 
 @admin.register(GlobalCashAccount)
-class GlobalCashAccountAdmin(admin.ModelAdmin):
+class GlobalCashAccountAdmin(ValidatedServiceAdmin):
     list_display = ("currency", "administrator", "balance", "capital", "is_active", "created_at")
     list_filter = ("is_active", "currency")
     search_fields = ("currency__code", "administrator__email")
@@ -43,7 +44,7 @@ class GlobalCashAccountAdmin(admin.ModelAdmin):
 
 
 @admin.register(GlobalCashMovement)
-class GlobalCashMovementAdmin(admin.ModelAdmin):
+class GlobalCashMovementAdmin(ValidatedServiceAdmin):
     list_display = ("global_account", "direction", "movement_type", "amount", "balance_after", "created_by", "created_at")
     list_filter = ("direction", "movement_type", "global_account__currency")
     search_fields = ("global_account__currency__code", "note", "created_by__email")
@@ -82,7 +83,7 @@ class CashMovementAdmin(admin.ModelAdmin):
 
 
 @admin.register(CashFunding)
-class CashFundingAdmin(admin.ModelAdmin):
+class CashFundingAdmin(ValidatedServiceAdmin):
     list_display = ("account", "amount", "allocated_by", "applied_at", "created_at")
     readonly_fields = ("allocated_by", "applied_at", "created_at")
 

@@ -9,6 +9,15 @@ from django.utils.translation import gettext_lazy as _
 from .models import TariffSchedule, TariffTier
 
 
+def active_tariff_schedule():
+    """One server-side selection for both the preview and saved operation."""
+    schedules = TariffSchedule.objects.filter(is_published=True, currency__code="USD").order_by("-id")
+    schedule = schedules.filter(name="FINCORYA PRD V1").first() or schedules.first()
+    if schedule is None:
+        raise ValidationError("Aucune grille tarifaire FINCORYA active n'est configurée.")
+    return schedule
+
+
 def lookup_fee(schedule: TariffSchedule, amount: Decimal) -> Decimal:
     """Return the tier where min <= amount <= max."""
     tier = (

@@ -39,9 +39,6 @@ class OperationForm(forms.Form):
         label="Nom du client", max_length=180,
         widget=forms.TextInput(attrs={"autocomplete": "name", "placeholder": "Nom complet"}),
     )
-    tariff_schedule = forms.ModelChoiceField(
-        queryset=TariffSchedule.objects.none(), required=False, widget=forms.HiddenInput
-    )
     amount = forms.DecimalField(
         label="Montant de l'opération", min_value=0.01, max_digits=16, decimal_places=2,
         widget=forms.NumberInput(attrs={"step": "0.01", "inputmode": "decimal", "placeholder": "0,00"}),
@@ -59,22 +56,19 @@ class OperationForm(forms.Form):
         elif user.role != Role.ADMIN:
             accounts = accounts.none()
         self.fields["account"].queryset = accounts
-        schedules = TariffSchedule.objects.filter(is_published=True, currency__code="USD").order_by("-id")
-        self.fields["tariff_schedule"].queryset = schedules
-        official_id = schedules.filter(name="FINCORYA PRD V1").values_list("pk", flat=True).first()
-        self.initial.setdefault("tariff_schedule", official_id or schedules.values_list("pk", flat=True).first())
         self.initial.setdefault("idempotency_key", uuid.uuid4().hex)
 
     def clean_tariff_schedule(self):
         """Apply the official active schedule; tariff selection is automatic."""
-        schedules = TariffSchedule.objects.filter(is_published=True, currency__code="USD").order_by("-id")
-        schedule = schedules.filter(name="FINCORYA PRD V1").first() or schedules.first()
-        if schedule is None:
-            raise forms.ValidationError("Aucune grille tarifaire FINCORYA active n'est configurée.")
-        return schedule
+        from apps.pricing.services import active_tariff_schedule
+        return active_tariff_schedule()
 
     def clean(self):
         cleaned = super().clean()
+        try:
+            cleaned["tariff_schedule"] = self.clean_tariff_schedule()
+        except forms.ValidationError as exc:
+            self.add_error(None, exc)
         identifier = (cleaned.get("customer_identifier") or "").strip()
         if cleaned.get("service") == TransactionService.PAYPAL:
             try:
