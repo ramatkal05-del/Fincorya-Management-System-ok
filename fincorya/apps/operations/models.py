@@ -20,12 +20,38 @@ class OperationStatus(models.TextChoices):
 
 
 class TransactionService(models.TextChoices):
+    """Historical default corridor codes. Kept for backward-compatible data
+    and as a fallback when no TransactionServiceOption row exists yet.
+    Administrators add new services (Western Union, MoneyGram, Wave, ...)
+    through Finance → Services de transaction, without a code change."""
     AIRTEL_MONEY = "AIRTEL_MONEY", _("Airtel Money")
     VODACOM_MPESA = "VODACOM_MPESA", _("Vodacom M-Pesa")
     AFRIMONEY = "AFRIMONEY", _("Afrimoney")
     TAPTAP_SEND = "TAPTAP_SEND", _("Tap Tap Send")
     PAYPAL = "PAYPAL", _("PayPal")
     ORANGE_MONEY = "ORANGE_MONEY", _("Orange Money")
+
+
+class TransactionServiceOption(models.Model):
+    """Admin-managed list of services selectable when creating an operation.
+    Seeded from TransactionService; new corridors can be added without a
+    deployment. Operation.service stores the plain code (no FK) so historical
+    operations stay valid even if a service is later deactivated."""
+    code = models.CharField(max_length=24, unique=True, verbose_name=_("Code"))
+    label = models.CharField(max_length=100, verbose_name=_("Nom affiché"))
+    is_active = models.BooleanField(default=True, verbose_name=_("Actif"))
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Service de transaction")
+        verbose_name_plural = _("Services de transaction")
+        ordering = ["label"]
+
+    def __str__(self):
+        return self.label
+
+    def clean(self):
+        self.code = (self.code or "").strip().upper().replace(" ", "_")
 
 
 class Operation(models.Model):

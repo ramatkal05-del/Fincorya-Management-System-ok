@@ -78,6 +78,12 @@ class CashMovementAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+    def has_change_permission(self, request, obj=None):
+        # All fields are readonly and CashMovement.save() rejects any update
+        # with a ValidationError; without this, submitting the (fieldless)
+        # change form still calls save() and crashes with an uncaught 500.
+        return False if obj else super().has_change_permission(request, obj)
+
     def has_delete_permission(self, request, obj=None):
         return False
 

@@ -4,7 +4,14 @@ from django import forms
 from apps.accounts.models import Role
 from apps.cash.models import CashAccount
 from apps.pricing.models import TariffSchedule
-from .models import OperationType, TransactionService
+from .models import OperationType, TransactionService, TransactionServiceOption
+
+
+def active_service_choices():
+    """Admin-managed services (Finance → Services de transaction), falling
+    back to the historical hardcoded list if none has been configured yet."""
+    options = list(TransactionServiceOption.objects.filter(is_active=True).order_by("label").values_list("code", "label"))
+    return options or list(TransactionService.choices)
 
 
 class OperationForm(forms.Form):
@@ -29,7 +36,7 @@ class OperationForm(forms.Form):
         widget=forms.RadioSelect,
     )
     account = forms.ModelChoiceField(label="Caisse", queryset=CashAccount.objects.none())
-    service = forms.ChoiceField(label="Service", choices=TransactionService.choices)
+    service = forms.ChoiceField(label="Service")
     customer_identifier = forms.CharField(
         label="Numéro, e-mail ou identifiant",
         max_length=254,
@@ -50,6 +57,7 @@ class OperationForm(forms.Form):
         super().__init__(*args, **kwargs)
         from django.conf import settings
         self.fields['commission_owner_confirmed'].required = settings.FINANCE_LEDGER_ENABLED
+        self.fields["service"].choices = active_service_choices()
         accounts = CashAccount.objects.select_related("agent", "currency").filter(is_active=True)
         if user.role == Role.AGENT:
             accounts = accounts.filter(agent=user)
@@ -81,8 +89,18 @@ class OperationForm(forms.Form):
 class OperationFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Rechercher")
     type = forms.ChoiceField(required=False, choices=[("", "Tous les types"), *OperationType.choices])
-    service = forms.ChoiceField(required=False, choices=[("", "Tous les services"), *TransactionService.choices])
+    service = forms.ChoiceField(required=False, choices=[])
     status = forms.ChoiceField(required=False, choices=[("", "Tous les statuts"), ("PENDING", "En attente"), ("COMPLETED", "Terminée"), ("CANCELLED", "Annulée")])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Include inactive/legacy codes too so filtering on historical operations still works.
+        codes = {code for code, _ in active_service_choices()}
+        codes |= set(TransactionServiceOption.objects.values_list("code", flat=True))
+        labels = dict(TransactionServiceOption.objects.values_list("code", "label"))
+        labels.update(dict(TransactionService.choices))
+        choices = sorted(((code, labels.get(code, code)) for code in codes), key=lambda pair: pair[1])
+        self.fields["service"].choices = [("", "Tous les services"), *choices]
 
 
 class OperationCancellationForm(forms.Form):

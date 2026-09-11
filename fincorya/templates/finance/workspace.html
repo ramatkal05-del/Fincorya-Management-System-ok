@@ -2,12 +2,12 @@
 {% block title %}{{ title }} — FINCORYA{% endblock %}
 {% block context_name %}Finance{% endblock %}
 {% block module_content %}
-<header class="page-hero"><div><p class="eyebrow">Registre financier</p><h1>{{ title }}</h1></div>
+<header class="page-hero"><div><p class="eyebrow">Registre financier</p><h1>{{ title }}</h1>{% if section == 'services' %}<p class="muted">Ce catalogue classe les comptes financiers. Pour ajouter un moyen de transfert proposé aux agents (Airtel Money, PayPal, Western Union…), utilisez « Gérer les services de transaction » ci-contre.</p>{% endif %}</div>
 <div class="button-row">
 {% if policy.administer %}
 {% if section == 'parties' %}<a class="button button-primary" href="{% url 'finance:party_onboarding' %}">Créer une partie (avec apport/garantie)</a><a class="button button-secondary" href="{% url 'finance:create_record' 'role' %}">Ajouter un rôle</a>{% endif %}
 {% if section == 'rules' %}<a class="button button-primary" href="{% url 'finance:create_record' 'rule' %}">Nouvelle règle datée</a>{% endif %}
-{% if section == 'services' %}<a class="button button-primary" href="{% url 'finance:create_record' 'service' %}">Nouveau service</a>{% endif %}
+{% if section == 'services' %}<a class="button button-primary" href="{% url 'finance:create_record' 'service' %}">Nouveau service (classification des comptes)</a>{% if request.user.role == 'ADMIN' %}<a class="button button-secondary" href="{% url 'admin:operations_transactionserviceoption_changelist' %}">Gérer les services de transaction (Airtel Money, PayPal, Western Union…)</a>{% endif %}{% endif %}
 {% if section == 'periods' %}<a class="button button-primary" href="{% url 'finance:period_create' %}">Nouvelle période</a>{% endif %}
 {% if section == 'guarantees' %}<a class="button button-primary" href="{% url 'finance:guarantee_form' %}">Définir une garantie</a>{% endif %}
 {% if section == 'policies' %}<a class="button button-primary" href="{% url 'finance:policy_create' %}">Nouvelle politique datée</a>{% endif %}
