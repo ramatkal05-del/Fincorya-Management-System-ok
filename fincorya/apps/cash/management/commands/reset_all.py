@@ -5,10 +5,14 @@ Deletes every row from every business table (cash, operations, finance,
 stakeholders, expenses, profits, reports, pricing, audit, notifications)
 and resets sequences. Only user-related and Django system tables are kept:
 
-  - auth_user, auth_group, auth_group_permissions, auth_permission
+  - accounts_user (+ its groups/permissions join tables), auth_group,
+    auth_group_permissions, auth_permission
   - django_content_type, django_migrations, django_session
   - accounts_recoverycode, accounts_auththrottle
   - otp_totp_totpdevice
+
+A user count is printed before and after to make any accidental user loss
+immediately visible.
 
 Usage:
     python manage.py reset_all              # interactive confirmation
@@ -19,8 +23,12 @@ from django.db import connection
 
 
 # Tables that are PRESERVED (users + Django internals + user-linked auth).
+# NOTE: FINCORYA uses a custom user model (AUTH_USER_MODEL = "accounts.User"),
+# so the table is "accounts_user", NOT the default "auth_user".
 KEEP_TABLES = {
-    "auth_user",
+    "accounts_user",
+    "accounts_user_groups",
+    "accounts_user_user_permissions",
     "auth_group",
     "auth_group_permissions",
     "auth_permission",
@@ -49,7 +57,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        from apps.accounts.models import User
+
         confirmed = options["confirm"]
+        users_before = User.objects.count()
+        self.stdout.write(f"Utilisateurs présents avant réinitialisation : {users_before}")
 
         if not confirmed:
             self.stdout.write(
@@ -112,9 +124,18 @@ class Command(BaseCommand):
                 )
             )
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                "Toutes les données métier ont été supprimées. "
-                "Les comptes utilisateurs sont conservés."
+        users_after = User.objects.count()
+        if users_after != users_before:
+            self.stdout.write(
+                self.style.ERROR(
+                    f"ATTENTION : le nombre d'utilisateurs a changé "
+                    f"({users_before} → {users_after}). Vérifiez immédiatement !"
+                )
             )
-        )
+        else:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Toutes les données métier ont été supprimées. "
+                    f"Les {users_after} compte(s) utilisateur(s) sont conservés."
+                )
+            )
