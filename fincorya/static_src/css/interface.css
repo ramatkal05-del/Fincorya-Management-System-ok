@@ -4,6 +4,7 @@
 .account-role-card>span{font-size:18px;font-weight:600}.account-role-card strong{font-size:12px;font-weight:500;color:var(--brand-primary)}
 .account-role-card:hover{border-color:var(--brand-primary);background:#f6fbf8}
 .account-explanation{padding:16px 20px;border-left:3px solid var(--brand-primary);background:#edf6f1;color:var(--text-muted);font-size:13px;line-height:1.7;margin:0 0 24px}
+.button-row{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
 .managed-account-form{max-width:980px}.managed-account-form>.button-row,.managed-account-form>.alert{grid-column:1/-1}
 .managed-account-form input:focus{box-shadow:0 0 0 3px rgb(0 107 79 / 12%);outline-color:#006b4f}
 #role-filter{min-height:44px;border:1px solid #dce3df;border-radius:8px;background:#fff;padding:8px 12px;color:#18201f;font:inherit;font-size:13px}
@@ -108,9 +109,10 @@ tbody tr:hover { background:#f5faf7; }
 .reference { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; }
 .money { text-align:right; font-variant-numeric:tabular-nums; }
 .status-badge { font-size:11px; min-height:24px; padding:4px 8px; font-weight:500; border-radius:6px; }
-.status-completed,.status-approved,.status-paid { color:#116c4e; background:#e7f6ef; }
-.status-pending,.status-draft { color:#825814; background:#fff5df; }
-.status-cancelled,.status-rejected { color:#9c3027; background:#fcecea; }
+.status-completed,.status-approved,.status-paid,.status-confirmed,.status-executed,.status-ready { color:#116c4e; background:#e7f6ef; }
+.status-pending,.status-draft,.status-submitted,.status-due,.status-initiated { color:#825814; background:#fff5df; }
+.status-cancelled,.status-rejected,.status-failed { color:#9c3027; background:#fcecea; }
+.status-reinvested,.status-received { color:#1e5f8f; background:#e8f1fb; }
 .notification-list { padding:0 20px; }
 .notification-list li { padding:18px 0; }
 .notification-list strong { font-size:12px; }
@@ -135,7 +137,13 @@ tbody tr:hover { background:#f5faf7; }
 .financial-form #id_type label { border-radius:8px; padding:12px; font-size:13px; }
 .financial-form #id_type input { min-height:auto; }
 .financial-form input[type=checkbox] { width:18px; height:18px; min-height:18px; accent-color:var(--brand-primary); }
-.workflow-grid { grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr); gap:24px; align-items:start; }
+.workflow-grid { grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr); gap:24px; align-items:start; margin-bottom:24px; }
+/* Consistent vertical rhythm between top-level, block-stacked sections.
+   Scoped to direct children only so grid siblings (content-grid, insight-grid,
+   workflow-grid columns) keep their side-by-side top alignment untouched. */
+.workspace-content>.panel,.workspace-content>.metric-grid,.workspace-content>.action-banner,.workspace-content>.account-role-grid,.workspace-content>.workflow-grid,.workspace-content>.account-grid,.workspace-content>#report-result { margin-top:24px; }
+.workspace-content>.alert { margin-bottom:16px; }
+.workspace-content>:first-child { margin-top:0; }
 .tariff-assurance { background:#edf7f3; border-color:#d5e9df; border-radius:8px; }
 .tariff-assurance strong { font-size:13px; }
 .tariff-assurance span { font-size:12px; }
@@ -236,7 +244,12 @@ tbody tr:hover { background:#f5faf7; }
 .panel-heading { gap:12px; flex-wrap:wrap; }
 .panel-body { padding:20px; }
 .panel-body>.form-stack { margin:20px 0 0; }
-.panel-body>p:first-child { margin-top:0; }
+.panel-body>p:first-child,.panel-body>pre:first-child { margin-top:0; }
+.panel-body pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#f5f8f6; border:1px solid var(--line); border-radius:8px; padding:16px; font-size:12px; }
+.panel+.panel { margin-top:20px; }
+.pagination { display:flex; align-items:center; gap:12px; margin-top:20px; padding-top:16px; border-top:1px solid var(--line); font-size:13px; }
+.pagination a { color:var(--brand-primary); font-weight:500; text-decoration:none; }
+.pagination a:hover { text-decoration:underline; }
 .party-layout { grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr); }
 .party-sidebar { display:grid; gap:20px; min-width:0; }
 .party-situation.report-card { margin-top:0; }

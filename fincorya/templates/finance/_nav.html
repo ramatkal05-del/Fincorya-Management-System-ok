@@ -1,24 +1,24 @@
 <nav class="finance-tabs" aria-label="Navigation finance">
 {% if request.user.role == 'ADMIN' or request.user.role == 'FINANCE_MANAGER' %}
-<a class="button button-secondary" href="{% url 'finance:overview' %}">Comptes financiers</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'contributions' %}">Apports</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'transfers' %}">Transferts</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'requests' %}">Demandes</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'parties' %}">Parties prenantes</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'guarantees' %}">Garanties</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'rules' %}">Règles</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'policies' %}">Distribution</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'remunerations' %}">Rémunérations</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'conversions' %}">Conversions</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'services' %}">Services</a>
-{% if request.user.role == 'ADMIN' %}<a class="button button-secondary" href="{% url 'operations:service_list' %}">Services de transaction</a>{% endif %}
-<a class="button button-secondary" href="{% url 'finance:workspace' 'journal' %}">Journal</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'periods' %}">Clôtures</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'expenses' %}">Charges à payer</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'profits' %}">Bénéfices</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'distributions' %}">Distributions</a>
-<a class="button button-secondary" href="{% url 'reports:center' %}">Centre de rapports</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'imports' %}">Préparation d’import</a>
-<a class="button button-secondary" href="{% url 'finance:workspace' 'reconciliation' %}">Réconciliation</a>
-{% else %}<a class="button button-secondary" href="{% url 'finance:workspace' 'transfers' %}">Mes transferts internes</a>{% endif %}
+<a class="button button-secondary"{% if request.resolver_match.url_name == 'overview' %} aria-current="page"{% endif %} href="{% url 'finance:overview' %}">Comptes financiers</a>
+<a class="button button-secondary"{% if section == 'contributions' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'contributions' %}">Apports</a>
+<a class="button button-secondary"{% if section == 'transfers' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'transfers' %}">Transferts</a>
+<a class="button button-secondary"{% if section == 'requests' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'requests' %}">Demandes</a>
+<a class="button button-secondary"{% if section == 'parties' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'parties' %}">Parties prenantes</a>
+<a class="button button-secondary"{% if section == 'guarantees' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'guarantees' %}">Garanties</a>
+<a class="button button-secondary"{% if section == 'rules' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'rules' %}">Règles</a>
+<a class="button button-secondary"{% if section == 'policies' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'policies' %}">Distribution</a>
+<a class="button button-secondary"{% if section == 'remunerations' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'remunerations' %}">Rémunérations</a>
+<a class="button button-secondary"{% if section == 'conversions' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'conversions' %}">Conversions</a>
+<a class="button button-secondary"{% if section == 'services' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'services' %}">Services</a>
+{% if request.user.role == 'ADMIN' %}<a class="button button-secondary"{% if request.resolver_match.url_name == 'service_list' %} aria-current="page"{% endif %} href="{% url 'operations:service_list' %}">Services de transaction</a>{% endif %}
+<a class="button button-secondary"{% if section == 'journal' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'journal' %}">Journal</a>
+<a class="button button-secondary"{% if section == 'periods' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'periods' %}">Clôtures</a>
+<a class="button button-secondary"{% if section == 'expenses' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'expenses' %}">Charges à payer</a>
+<a class="button button-secondary"{% if section == 'profits' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'profits' %}">Bénéfices</a>
+<a class="button button-secondary"{% if section == 'distributions' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'distributions' %}">Distributions</a>
+<a class="button button-secondary"{% if request.resolver_match.url_name == 'center' and request.resolver_match.app_name == 'reports' %} aria-current="page"{% endif %} href="{% url 'reports:center' %}">Centre de rapports</a>
+<a class="button button-secondary"{% if section == 'imports' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'imports' %}">Préparation d’import</a>
+<a class="button button-secondary"{% if section == 'reconciliation' %} aria-current="page"{% endif %} href="{% url 'finance:workspace' 'reconciliation' %}">Réconciliation</a>
+{% else %}<a class="button button-secondary" aria-current="page" href="{% url 'finance:workspace' 'transfers' %}">Mes transferts internes</a>{% endif %}
 </nav>

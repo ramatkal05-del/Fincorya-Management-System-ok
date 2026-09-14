@@ -59,5 +59,5 @@
 </article>
 {% empty %}<div class="empty-state compact"><h2>Aucun élément</h2><p>Les données seront affichées après leur saisie ou leur préparation explicite.</p></div>{% endfor %}
 </section>
-{% if page.has_other_pages %}<nav aria-label="Pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Précédent</a>{% endif %}<span>Page {{ page.number }} sur {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?page={{ page.next_page_number }}">Suivant</a>{% endif %}</nav>{% endif %}
+{% if page.has_other_pages %}<nav class="pagination" aria-label="Pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Précédent</a>{% endif %}<span>Page {{ page.number }} sur {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?page={{ page.next_page_number }}">Suivant</a>{% endif %}</nav>{% endif %}
 {% endblock %}
