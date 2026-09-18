@@ -1,5 +1,5 @@
 /* FINCORYA base layer: reset, typography defaults and shared primitives. */
-:root{--emerald:#006b4f;--deep:#013b36;--gold:#c9a227;--ivory:#f7f8f5;--graphite:#18201f;--muted:#5d6966;--line:#dce3df;--white:#fff;--danger:#b42318;--warning:#8a5b00;--shadow:0 12px 40px rgba(1,59,54,.08);--radius:14px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--graphite);background:var(--ivory);font-size:16px;line-height:1.55}
+:root{--emerald:#006b4f;--deep:#013b36;--gold:#c9a227;--ivory:#f7f8f5;--graphite:#18201f;--muted:#5d6966;--line:#dce3df;--white:#fff;--danger:#c0392b;--warning:#8a5b00;--shadow:0 12px 40px rgba(1,59,54,.08);--radius:14px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--graphite);background:var(--ivory);font-size:16px;line-height:1.55}
 *{box-sizing:border-box}
 body{margin:0;min-width:320px}
 a{color:var(--emerald);text-underline-offset:.15em}
@@ -30,7 +30,7 @@ h2{font-size:1.5rem;line-height:1.25}
 .auth-help{margin:1.5rem 0 0;color:var(--muted);font-size:.85rem;text-align:center}
 .text-link{display:inline-block;color:var(--emerald);font-weight:700}
 .alert{padding:.85rem 1rem;border-radius:10px;font-size:.9rem}
-.alert-error{background:#fff1f0;border:1px solid #f1b7b2;color:#8f1f17}
+.alert-error{background:#fff1f0;border:1px solid #f1b7b2;color:var(--danger)}
 .alert-warning{background:#fff8df;border:1px solid #ead17a;color:#674700}
 .alert-success{background:#e8f5ef;border:1px solid #a9d8c3;color:#0b5c40}
 .alert-info{background:#eaf2fb;border:1px solid #b9d1ef;color:#1e3f6d}

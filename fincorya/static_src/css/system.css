@@ -44,7 +44,6 @@
 :root{
   --ui-content: 1440px;
   --ui-radius: 14px;
-  --ui-focus: 0 0 0 3px rgba(201, 162, 39, .32);
 }
 html{ scroll-behavior: smooth; }
 body{ overflow-x: hidden; font-size: 16px; line-height: 1.55; }

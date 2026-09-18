@@ -35,6 +35,10 @@
   --danger:#c0392b; --warning:#b7791f; --ui-focus:0 0 0 3px rgb(0 107 79 / 12%);
   --ui-shadow:0 2px 8px rgb(24 32 31 / 4%);
   --font-body:Inter,sans-serif; --font-heading:"Space Grotesk",Inter,sans-serif;
+  /* Reconcile duplicate tokens declared across the legacy component
+     stylesheets so borders and muted text render identically everywhere,
+     regardless of which file styled a given component. */
+  --border:var(--line); --muted:var(--text-muted); --error:var(--danger);
 }
 body { background:var(--fincorya-ivory); color:var(--brand-text); font-family:var(--font-body); }
 h1,h2,h3,.metric-card>strong,.account-balance strong { font-family:var(--font-heading); }
