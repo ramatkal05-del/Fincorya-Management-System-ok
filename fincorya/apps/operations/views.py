@@ -76,6 +76,7 @@ def operation_create(request):
                     customer_name=data["customer_name"],
                     stakeholder=data["stakeholder"],
                     commission_owner_confirmed=data["commission_owner_confirmed"],
+                    fee_mode=data["fee_mode"],
                 )
             except (ValidationError, PermissionDenied) as exc:
                 form.add_error(None, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
@@ -90,6 +91,7 @@ def operation_preview(request):
     try:
         account = CashAccount.objects.select_related("currency", "agent").get(pk=request.GET.get("account"))
         from apps.pricing.services import active_tariff_schedule
+        from .services import _pricing
         schedule = active_tariff_schedule()
         amount = Decimal(request.GET.get("amount", "0"))
         if not amount.is_finite() or amount <= 0 or amount >= Decimal("1e14"):
@@ -98,10 +100,26 @@ def operation_preview(request):
         allowed = account.agent_id == request.user.pk if request.user.role == Role.AGENT else request.user.role == Role.ADMIN
         if not allowed:
             raise PermissionDenied
-        rate = current_rate_to_usd(account.currency)
-        amount_usd = (amount * rate).quantize(Decimal("0.01"))
-        fee_usd = lookup_fee(schedule, amount_usd) if amount_usd <= Decimal("5000") else None
-        context = {"amount": amount, "currency": account.currency.code, "amount_usd": amount_usd, "rate": rate, "fee_usd": fee_usd, "fee_local": from_usd(fee_usd, account.currency) if fee_usd is not None else None}
+        op_type = request.GET.get("type", OperationType.SENT_TRANSFER)
+        fee_mode = request.GET.get("fee_mode", "ADDED")
+        pricing = _pricing(
+            account=account, entered_amount=amount, tariff_schedule=schedule,
+            manual_fee=None, actor=request.user, fee_justification="",
+            fee_mode=fee_mode, operation_type=op_type,
+        )
+        total = pricing["base_amount"] + pricing["fee"] if op_type == OperationType.SENT_TRANSFER else pricing["base_amount"]
+        context = {
+            "fee_mode": fee_mode,
+            "amount": pricing["base_amount"],
+            "entered_amount": amount,
+            "currency": account.currency.code,
+            "amount_usd": pricing["base_amount_usd"],
+            "rate": pricing["rate"],
+            "fee_usd": pricing["fee_usd"],
+            "fee_local": pricing["fee"],
+            "total": total,
+            "net": pricing["base_amount"] - pricing["fee"] if op_type == OperationType.WITHDRAWAL else pricing["base_amount"],
+        }
         return render(request, "operations/_preview.html", context)
     except (CashAccount.DoesNotExist, TariffSchedule.DoesNotExist, InvalidOperation, ValueError, ValidationError, PermissionDenied) as exc:
         message = "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Complétez le montant, la caisse et la grille pour afficher l'impact."

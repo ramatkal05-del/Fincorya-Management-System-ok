@@ -13,6 +13,11 @@ class OperationType(models.TextChoices):
     WITHDRAWAL = "WITHDRAWAL", _("Retrait")
 
 
+class FeeMode(models.TextChoices):
+    ADDED = "ADDED", _("Frais ajoutés")
+    DEDUCTED = "DEDUCTED", _("Frais déduits")
+
+
 class OperationStatus(models.TextChoices):
     PENDING = "PENDING", _("En attente")   # received, not yet paid out
     COMPLETED = "COMPLETED", _("Terminée")
@@ -70,6 +75,7 @@ class Operation(models.Model):
         "pricing.TariffSchedule", on_delete=models.RESTRICT, related_name="operations", null=True, blank=True
     )
 
+    fee_mode = models.CharField(max_length=10, choices=FeeMode.choices, default=FeeMode.ADDED, verbose_name=_("Mode de frais"))
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     fee = models.DecimalField(max_digits=12, decimal_places=2)
     fee_auto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name=_("Frais calculé (avant réduction)"))

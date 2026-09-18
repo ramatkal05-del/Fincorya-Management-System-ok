@@ -31,7 +31,23 @@ from apps.notifications.services import notify
 from apps.pricing.services import lookup_fee, resolve_fee, current_rate_to_usd, from_usd
 from config.business_time import business_date
 
-from .models import Operation, OperationRequest, OperationRevision, OperationStatus, OperationType
+from .models import FeeMode, Operation, OperationRequest, OperationRevision, OperationStatus, OperationType
+
+
+def _solve_base_for_fee_mode(target_usd: Decimal, schedule, is_sent: bool) -> Decimal:
+    """Find the principal USD amount that satisfies the fee_mode equation.
+
+    - Sent transfer (target = base + fee): base = target - fee(base)
+    - Received/withdrawal (target = base - fee): base = target + fee(base)
+    """
+    base_usd = target_usd
+    for _ in range(20):
+        fee_usd = lookup_fee(schedule, base_usd)
+        new_base = target_usd - fee_usd if is_sent else target_usd + fee_usd
+        if new_base <= 0 or new_base == base_usd:
+            break
+        base_usd = new_base
+    return base_usd
 
 
 def _day_is_closed(account: CashAccount, on_date) -> bool:
@@ -54,25 +70,46 @@ def _customer_fields(service, customer_identifier, customer_name):
     return {"service": service, "customer_identifier": identifier, "customer_name": name}
 
 
-def _pricing(*, account, amount, tariff_schedule, manual_fee, actor, fee_justification=""):
+def _pricing(*, account, entered_amount: Decimal, tariff_schedule, manual_fee,
+             actor, fee_justification: str = "", fee_mode: str = FeeMode.ADDED,
+             operation_type: str | None = None):
     rate = current_rate_to_usd(account.currency)
-    amount_usd = (amount * rate).quantize(Decimal("0.01"))
+    entered_usd = (entered_amount * rate).quantize(Decimal("0.01"))
     if tariff_schedule.currency.code != "USD":
         raise ValidationError(_("La grille tarifaire de référence doit être exprimée en USD."))
-    if amount_usd > Decimal("5000.00"):
-        if actor.role != Role.ADMIN or manual_fee is None or not fee_justification.strip():
+
+    is_sent = operation_type == OperationType.SENT_TRANSFER
+    if fee_mode == FeeMode.DEDUCTED:
+        base_usd = _solve_base_for_fee_mode(entered_usd, tariff_schedule, is_sent)
+        if base_usd <= 0:
+            raise ValidationError(_("Le montant saisi ne couvre pas les frais minimum."))
+        if base_usd > Decimal("5000.00") and (actor.role != Role.ADMIN or manual_fee is None or not fee_justification.strip()):
             raise ValidationError(_("Au-delà de 5 000 USD, un administrateur doit saisir les frais et leur justification."))
-        fee_usd = Decimal(manual_fee).quantize(Decimal("0.01"))
-        if fee_usd <= 0:
-            raise ValidationError(_("Les frais administrateur doivent être supérieurs à zéro."))
-        fee_auto_usd = Decimal("0.00")
+        fee_usd = Decimal(manual_fee).quantize(Decimal("0.01")) if manual_fee is not None else lookup_fee(tariff_schedule, base_usd)
+        fee_auto_usd = fee_usd
+        base_amount = from_usd(base_usd, account.currency)
     else:
-        fee_auto_usd = resolve_fee(tariff_schedule, amount_usd)
-        fee_usd = resolve_fee(tariff_schedule, amount_usd, manual_fee)
+        base_usd = entered_usd
+        base_amount = entered_amount
+        if base_usd > Decimal("5000.00"):
+            if actor.role != Role.ADMIN or manual_fee is None or not fee_justification.strip():
+                raise ValidationError(_("Au-delà de 5 000 USD, un administrateur doit saisir les frais et leur justification."))
+            fee_usd = Decimal(manual_fee).quantize(Decimal("0.01"))
+            if fee_usd <= 0:
+                raise ValidationError(_("Les frais administrateur doivent être supérieurs à zéro."))
+            fee_auto_usd = Decimal("0.00")
+        else:
+            fee_auto_usd = resolve_fee(tariff_schedule, base_usd)
+            fee_usd = resolve_fee(tariff_schedule, base_usd, manual_fee)
+
     return {
-        "rate": rate, "amount_usd": amount_usd,
-        "fee_usd": fee_usd, "fee": from_usd(fee_usd, account.currency),
+        "rate": rate,
+        "base_amount": base_amount,
+        "base_amount_usd": base_usd,
+        "fee": from_usd(fee_usd, account.currency),
+        "fee_usd": fee_usd,
         "fee_auto": from_usd(fee_auto_usd, account.currency),
+        "fee_auto_usd": fee_auto_usd,
     }
 
 
@@ -129,7 +166,7 @@ def _complete_request(request, operation):
 def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                           manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
                           service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
-                          supplier_fee=None) -> Operation:
+                          supplier_fee=None, fee_mode: str = FeeMode.ADDED) -> Operation:
     """Register a FINCORYA sent transfer and credit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -139,17 +176,22 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
 
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     _assert_account_access(agent, account)
-    pricing = _pricing(account=account, amount=amount, tariff_schedule=tariff_schedule, manual_fee=manual_fee, actor=agent, fee_justification=fee_justification)
+    pricing = _pricing(
+        account=account, entered_amount=amount, tariff_schedule=tariff_schedule,
+        manual_fee=manual_fee, actor=agent, fee_justification=fee_justification,
+        fee_mode=fee_mode, operation_type=OperationType.SENT_TRANSFER,
+    )
     supplier_fee = _supplier_fee(supplier_fee)
-    cash_impact = amount + pricing["fee"] - supplier_fee
+    cash_impact = pricing["base_amount"] + pricing["fee"] - supplier_fee
     if cash_impact <= 0:
         raise ValidationError(_("Le frais fournisseur dépasse l'encaissement de l'opération."))
 
     operation = Operation.objects.create(
         type=OperationType.SENT_TRANSFER, status=OperationStatus.COMPLETED,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
-        amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
+        fee_mode=fee_mode,
+        amount=pricing["base_amount"], fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
+        amount_usd=pricing["base_amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
     apply_movement(
@@ -171,7 +213,7 @@ def create_sent_transfer(*, agent, account_id: int, amount: Decimal, tariff_sche
 def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                       manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
                       service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
-                      supplier_fee=None) -> Operation:
+                      supplier_fee=None, fee_mode: str = FeeMode.ADDED) -> Operation:
     """Registers an incoming payout request. No cash movement yet — status PENDING until paid."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -181,13 +223,18 @@ def receive_transfer(*, agent, account_id: int, amount: Decimal, tariff_schedule
 
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     _assert_account_access(agent, account)
-    pricing = _pricing(account=account, amount=amount, tariff_schedule=tariff_schedule, manual_fee=manual_fee, actor=agent, fee_justification=fee_justification)
+    pricing = _pricing(
+        account=account, entered_amount=amount, tariff_schedule=tariff_schedule,
+        manual_fee=manual_fee, actor=agent, fee_justification=fee_justification,
+        fee_mode=fee_mode, operation_type=OperationType.RECEIVED_TRANSFER,
+    )
 
     operation = Operation.objects.create(
         type=OperationType.RECEIVED_TRANSFER, status=OperationStatus.PENDING,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=_supplier_fee(supplier_fee), rate_to_usd=pricing["rate"],
-        amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
+        fee_mode=fee_mode,
+        amount=pricing["base_amount"], fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=_supplier_fee(supplier_fee), rate_to_usd=pricing["rate"],
+        amount_usd=pricing["base_amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, **_customer_fields(service, customer_identifier, customer_name),
     )
     audit_record(actor=agent, action="OPERATION_CREATE", instance=operation, after={"type": operation.type, "amount": str(amount)})
@@ -234,7 +281,7 @@ def pay_received_transfer(*, operation_id: int, paid_by) -> Operation:
 def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedule,
                        manual_fee: Decimal | None = None, note: str = "", fee_justification: str = "", idempotency_key: str | None = None,
                        service="AIRTEL_MONEY", customer_identifier="", customer_name="", stakeholder=None, commission_owner_confirmed=False,
-                       supplier_fee=None) -> Operation:
+                       supplier_fee=None, fee_mode: str = FeeMode.ADDED) -> Operation:
     """Register a FINCORYA withdrawal and debit the cash account."""
     if amount <= 0:
         raise ValidationError(_("Le montant doit être supérieur à zéro."))
@@ -244,17 +291,22 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
 
     account = CashAccount.objects.select_for_update().get(pk=account_id)
     _assert_account_access(agent, account)
-    pricing = _pricing(account=account, amount=amount, tariff_schedule=tariff_schedule, manual_fee=manual_fee, actor=agent, fee_justification=fee_justification)
+    pricing = _pricing(
+        account=account, entered_amount=amount, tariff_schedule=tariff_schedule,
+        manual_fee=manual_fee, actor=agent, fee_justification=fee_justification,
+        fee_mode=fee_mode, operation_type=OperationType.WITHDRAWAL,
+    )
     supplier_fee = _supplier_fee(supplier_fee)
-    cash_impact = amount - pricing["fee"] + supplier_fee
+    cash_impact = pricing["base_amount"] - pricing["fee"] + supplier_fee
     if cash_impact <= 0 or account.balance < cash_impact:
         raise ValidationError(_("Fonds insuffisants dans la caisse pour ce retrait."))
 
     operation = Operation.objects.create(
         type=OperationType.WITHDRAWAL, status=OperationStatus.COMPLETED,
         agent=agent, account=account, currency=account.currency, tariff_schedule=tariff_schedule,
-        amount=amount, fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
-        amount_usd=pricing["amount_usd"], fee_usd=pricing["fee_usd"],
+        fee_mode=fee_mode,
+        amount=pricing["base_amount"], fee=pricing["fee"], fee_auto=pricing["fee_auto"], supplier_fee=supplier_fee, rate_to_usd=pricing["rate"],
+        amount_usd=pricing["base_amount_usd"], fee_usd=pricing["fee_usd"],
         commission_owner_confirmed=commission_owner_confirmed, note=note, paid_at=timezone.now(), **_customer_fields(service, customer_identifier, customer_name),
     )
     apply_movement(

@@ -1,8 +1,11 @@
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth.hashers import check_password
+from django.utils import timezone
+from django_otp.plugins.otp_totp.models import TOTPDevice
 from PIL import Image, UnidentifiedImageError
 
-from .models import User
+from .models import RecoveryCode, User
 
 
 class EmailLoginForm(forms.Form):
@@ -58,6 +61,12 @@ class SecurePasswordChangeForm(PasswordChangeForm):
         label="Mot de passe actuel", strip=False,
         widget=forms.PasswordInput(attrs={"autocomplete": "current-password", "autofocus": True}),
     )
+    mfa_token = forms.CharField(
+        label="Code de sécurité (TOTP ou code de récupération)",
+        min_length=6, max_length=12, strip=False,
+        widget=forms.TextInput(attrs={"autocomplete": "one-time-code", "inputmode": "numeric", "placeholder": "000000"}),
+        help_text="Requis car l'authentification à deux facteurs reste obligatoire pour modifier le mot de passe.",
+    )
     new_password1 = forms.CharField(
         label="Nouveau mot de passe", strip=False,
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
@@ -67,3 +76,19 @@ class SecurePasswordChangeForm(PasswordChangeForm):
         label="Confirmation du nouveau mot de passe", strip=False,
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
     )
+
+    def clean_mfa_token(self):
+        token = (self.cleaned_data.get("mfa_token") or "").replace(" ", "")
+        user = self.user
+        if not user.totp_enabled:
+            # MFA not configured for this account: keep the old-password gate only.
+            return token
+        if not token:
+            raise forms.ValidationError("Le code de sécurité est obligatoire pour modifier le mot de passe.")
+        device = TOTPDevice.objects.filter(user=user, confirmed=True).first()
+        if device and device.verify_token(token):
+            return token
+        recovery = next((code for code in user.recovery_codes.filter(used_at__isnull=True) if code.matches(token.upper())), None)
+        if recovery is not None and user.recovery_codes.filter(pk=recovery.pk, used_at__isnull=True).update(used_at=timezone.now()) == 1:
+            return token
+        raise forms.ValidationError("Code de sécurité invalide ou expiré.")

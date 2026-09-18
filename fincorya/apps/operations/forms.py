@@ -4,7 +4,7 @@ from django import forms
 from apps.accounts.models import Role
 from apps.cash.models import CashAccount
 from apps.pricing.models import TariffSchedule
-from .models import OperationType, TransactionService, TransactionServiceOption
+from .models import FeeMode, OperationType, TransactionService, TransactionServiceOption
 
 
 def active_service_choices():
@@ -22,9 +22,17 @@ class TransactionServiceOptionForm(forms.ModelForm):
 
 
 class OperationForm(forms.Form):
-    field_order = ["type", "account", "service", "customer_identifier", "customer_name",
+    field_order = ["type", "account", "service", "fee_mode", "customer_identifier", "customer_name",
                    "amount", "stakeholder", "commission_owner_confirmed", "note",
                    "tariff_schedule", "idempotency_key"]
+    fee_mode = forms.ChoiceField(
+        label="Mode de frais",
+        choices=FeeMode.choices,
+        initial=FeeMode.ADDED,
+        widget=forms.RadioSelect,
+        help_text="Frais ajoutés : le bénéficiaire reçoit le montant saisi, le client paie les frais en plus. "
+                  "Frais déduits : le montant saisi est le total payé par le client, les frais sont déduits pour obtenir le montant reçu.",
+    )
     stakeholder = forms.ModelChoiceField(
         label="Partenaire de commission", required=False,
         queryset=Stakeholder.objects.filter(is_active=True),

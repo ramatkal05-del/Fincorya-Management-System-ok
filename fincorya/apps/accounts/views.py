@@ -70,20 +70,12 @@ def _apply_local_bypass(request):
 
 
 def mfa_required(view):
+    """Login-only guard. MFA is no longer required to access the application;
+    it is kept available for password-change protection only."""
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         if not _apply_local_bypass(request):
             return redirect_to_login(request.get_full_path(), settings.LOGIN_URL)
-        if not settings.MFA_ENABLED:
-            return view(request, *args, **kwargs)
-        verified = callable(getattr(request.user, "is_verified", None)) and request.user.is_verified()
-        session_verified = request.session.get("fincorya_mfa_verified") or request.session.get("fincorya_recovery_verified")
-        if not verified and not session_verified:
-            if not request.user.totp_enabled:
-                return redirect("accounts:totp_setup")
-            auth_logout(request)
-            messages.error(request, "Veuillez confirmer votre code de sécurité.")
-            return redirect("accounts:login")
         return view(request, *args, **kwargs)
     return wrapped
 
@@ -104,21 +96,10 @@ def login_view(request):
             form.add_error(None, "Adresse e-mail ou mot de passe incorrect.")
         elif not user.is_active:
             form.add_error(None, "Ce compte est désactivé.")
-        elif not settings.MFA_ENABLED:
-            clear_auth_failures(action="LOGIN", identifier=throttle_key)
-            auth_login(request, user)
-            return redirect("dashboard")
-        elif user.totp_enabled:
-            clear_auth_failures(action="LOGIN", identifier=throttle_key)
-            request.session.pop("fincorya_recovery_verified", None)
-            request.session.pop("fincorya_mfa_verified", None)
-            request.session.pop("fincorya_email_otp", None)
-            request.session["preauth_user_id"] = user.pk
-            return redirect("accounts:verify")
         else:
             clear_auth_failures(action="LOGIN", identifier=throttle_key)
             auth_login(request, user)
-            return redirect("accounts:totp_setup")
+            return redirect("dashboard")
     return render(request, "accounts/login.html", {"form": form})
 
 

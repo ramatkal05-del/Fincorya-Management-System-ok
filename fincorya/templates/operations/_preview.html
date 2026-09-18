@@ -1,1 +1,10 @@
-<dl class="financial-summary"><div><dt>Montant saisi</dt><dd>{{ currency }} {{ amount }}</dd></div><div><dt>Équivalent USD</dt><dd>USD {{ amount_usd }}</dd></div><div><dt>Taux figé</dt><dd>{{ rate }}</dd></div><div><dt>Frais automatiques</dt><dd>{% if fee_usd is not None %}USD {{ fee_usd }} · {{ currency }} {{ fee_local }}{% else %}Validation administrateur requise{% endif %}</dd></div></dl>
+<dl class="financial-summary">
+  <div><dt>Montant saisi</dt><dd>{{ currency }} {{ entered_amount }}</dd></div>
+  <div><dt>Mode de frais</dt><dd>{% if fee_mode == "DEDUCTED" %}Frais déduits{% else %}Frais ajoutés{% endif %}</dd></div>
+  <div><dt>Montant de l'opération (principal)</dt><dd>{{ currency }} {{ amount }}</dd></div>
+  <div><dt>Frais automatiques</dt><dd>{% if fee_usd is not None %}{{ currency }} {{ fee_local }} · USD {{ fee_usd }}{% else %}Validation administrateur requise{% endif %}</dd></div>
+  <div><dt>Total payé par le client</dt><dd>{{ currency }} {{ total }}</dd></div>
+  {% if net != amount %}<div><dt>Net reçu par le client</dt><dd>{{ currency }} {{ net }}</dd></div>{% endif %}
+  <div><dt>Équivalent USD</dt><dd>USD {{ amount_usd }}</dd></div>
+  <div><dt>Taux figé</dt><dd>{{ rate }}</dd></div>
+</dl>
