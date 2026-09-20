@@ -338,6 +338,13 @@ def profile_photo(request, user_id):
     try:
         handle = user.photo.open("rb")
     except OSError as exc:
+        # The DB still references a file that no longer exists on disk
+        # (e.g. after a media reset). Clear the stale reference so the
+        # UI falls back to the initials avatar instead of retrying a
+        # broken image on every page load.
+        user.photo.delete(save=False)
+        user.photo = None
+        user.save(update_fields=["photo"])
         raise Http404("Photo indisponible.") from exc
     response = FileResponse(handle, filename=Path(user.photo.name).name)
     response.headers["Cache-Control"] = "private, max-age=300, no-store"

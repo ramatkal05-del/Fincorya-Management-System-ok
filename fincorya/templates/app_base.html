@@ -36,7 +36,7 @@
     </nav>
     <div class="workspace-security"><span class="security-pulse" aria-hidden="true"></span><div><strong>Environnement sécurisé</strong><small>Piste d’audit active</small></div></div>
     <div class="workspace-identity">
-      {% if request.user.photo %}<img class="avatar avatar-photo" src="{% url 'accounts:profile_photo' request.user.pk %}" alt="Photo de {{ request.user.get_full_name|default:request.user.email }}" width="38" height="38">{% else %}<span class="avatar" aria-hidden="true">{{ request.user.email|first|upper }}</span>{% endif %}
+      {% if request.user.photo %}<span class="avatar" aria-hidden="true" hidden data-avatar-fallback>{{ request.user.email|first|upper }}</span><img class="avatar avatar-photo" src="{% url 'accounts:profile_photo' request.user.pk %}" alt="Photo de {{ request.user.get_full_name|default:request.user.email }}" width="38" height="38" onerror="this.hidden=true;this.previousElementSibling.hidden=false;">{% else %}<span class="avatar" aria-hidden="true">{{ request.user.email|first|upper }}</span>{% endif %}
       <div><strong>{{ request.user.get_full_name|default:request.user.email }}</strong><small>{{ request.user.get_role_display }}</small></div>
     </div>
   </aside>

@@ -76,6 +76,16 @@ class AccountManagementTests(TestCase):
         self.assertEqual(agent.role, Role.AGENT)
         self.assertFalse(agent.is_staff)
 
+    def test_stale_photo_reference_self_heals_instead_of_repeated_404s(self):
+        from django.core.files.base import ContentFile
+        self.admin.photo.save("missing.jpg", ContentFile(b"data"), save=True)
+        # Simulate a media reset: the DB still references a file that is gone from disk.
+        self.admin.photo.storage.delete(self.admin.photo.name)
+        response = self.client.get(reverse("accounts:profile_photo", args=[self.admin.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.admin.refresh_from_db()
+        self.assertFalse(self.admin.photo)
+
     def test_own_administrator_cannot_be_disabled(self):
         response = self.client.post(reverse("accounts:manage_status", args=[self.admin.pk]))
         self.assertEqual(response.status_code, 403)

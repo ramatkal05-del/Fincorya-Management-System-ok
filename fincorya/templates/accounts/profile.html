@@ -5,7 +5,7 @@
 <header class="module-page-header"><div><p class="eyebrow">Compte personnel</p><h1>Mon profil</h1><p class="muted">Mettez à jour vos coordonnées et la photo utilisée dans votre espace FINCORYA.</p></div><a class="button button-secondary" href="{% url 'accounts:password_change' %}">Modifier mon mot de passe</a></header>
 <div class="profile-settings-grid">
   <aside class="panel profile-summary" aria-label="Résumé du profil">
-    {% if request.user.photo %}<img class="profile-avatar-large" src="{% url 'accounts:profile_photo' request.user.pk %}" alt="Photo actuelle de {{ request.user.get_full_name|default:request.user.email }}" width="112" height="112">{% else %}<span class="profile-avatar-large profile-avatar-fallback" aria-hidden="true">{{ request.user.email|first|upper }}</span>{% endif %}
+    {% if request.user.photo %}<span class="profile-avatar-large profile-avatar-fallback" aria-hidden="true" hidden>{{ request.user.email|first|upper }}</span><img class="profile-avatar-large" src="{% url 'accounts:profile_photo' request.user.pk %}" alt="Photo actuelle de {{ request.user.get_full_name|default:request.user.email }}" width="112" height="112" onerror="this.hidden=true;this.previousElementSibling.hidden=false;">{% else %}<span class="profile-avatar-large profile-avatar-fallback" aria-hidden="true">{{ request.user.email|first|upper }}</span>{% endif %}
     <div><h2>{{ request.user.get_full_name|default:request.user.email }}</h2><p>{{ request.user.get_role_display }}</p><span class="status-badge status-completed">Compte actif</span></div>
   </aside>
   <section class="panel">
