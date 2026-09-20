@@ -79,7 +79,15 @@ def _pricing(*, account, entered_amount: Decimal, tariff_schedule, manual_fee,
         raise ValidationError(_("La grille tarifaire de référence doit être exprimée en USD."))
 
     is_sent = operation_type == OperationType.SENT_TRANSFER
-    if fee_mode == FeeMode.DEDUCTED:
+    is_withdrawal = operation_type == OperationType.WITHDRAWAL
+    # A retrait has a single counter-party (the beneficiary collecting cash),
+    # unlike a sent transfer, so the fee must always be looked up on the
+    # amount entered — "ajoutés" vs "déduits" only decides whether that fee
+    # reduces the payout or is charged on top of it (handled by the caller's
+    # cash_impact). Solving for a hidden base only makes sense when the
+    # entered figure is a *total* paid by someone else than the recipient,
+    # i.e. for a sent transfer in "frais déduits" mode.
+    if fee_mode == FeeMode.DEDUCTED and not is_withdrawal:
         base_usd = _solve_base_for_fee_mode(entered_usd, tariff_schedule, is_sent)
         if base_usd <= 0:
             raise ValidationError(_("Le montant saisi ne couvre pas les frais minimum."))
@@ -297,7 +305,15 @@ def create_withdrawal(*, agent, account_id: int, amount: Decimal, tariff_schedul
         fee_mode=fee_mode, operation_type=OperationType.WITHDRAWAL,
     )
     supplier_fee = _supplier_fee(supplier_fee)
-    cash_impact = pricing["base_amount"] - pricing["fee"] + supplier_fee
+    # "Frais déduits" : le montant saisi est le total dont le frais est
+    # retranché avant remise au client. "Frais ajoutés" : le montant saisi
+    # est ce que le client doit recevoir intégralement, le frais est prélevé
+    # ailleurs (ex. déjà collecté sur l'envoi d'origine) et ne réduit pas ce
+    # paiement.
+    if fee_mode == FeeMode.DEDUCTED:
+        cash_impact = pricing["base_amount"] - pricing["fee"] + supplier_fee
+    else:
+        cash_impact = pricing["base_amount"] + supplier_fee
     if cash_impact <= 0 or account.balance < cash_impact:
         raise ValidationError(_("Fonds insuffisants dans la caisse pour ce retrait."))
 
@@ -364,6 +380,41 @@ def cancel_operation(*, operation_id: int, cancelled_by, reason: str) -> Operati
     audit_record(actor=cancelled_by, action="OPERATION_CANCEL", instance=operation, before={"reason": reason})
     _notify_operation(operation, cancelled_by, _("Opération annulée"))
     return operation
+
+
+@ledger_atomic
+def purge_cancelled_operation(*, operation_id: int, purged_by, reason: str) -> None:
+    """Permanently delete a CANCELLED operation. Admin-only, and refused as
+    soon as any accounting trail still depends on it (revision, partner
+    attribution, posted ledger entry) so the financial history stays sound.
+    The compensating CashMovement rows created by `cancel_operation` are
+    never deleted — they are immutable by design — the FK simply turns null."""
+    if purged_by.role != Role.ADMIN:
+        raise PermissionDenied(_("Seul un administrateur peut supprimer définitivement une opération."))
+    if not reason.strip():
+        raise ValidationError(_("Le motif de suppression est obligatoire."))
+
+    operation = Operation.objects.select_for_update().get(pk=operation_id)
+    if operation.status != OperationStatus.CANCELLED:
+        raise ValidationError(_("Seule une opération annulée peut être supprimée définitivement."))
+    if operation.revisions.exists():
+        raise ValidationError(_("Suppression bloquée : cette opération a des révisions enregistrées."))
+    if hasattr(operation, "partner_attribution"):
+        raise ValidationError(_("Suppression bloquée : un partenaire de commission est rattaché à cette opération."))
+    from apps.finance.models import JournalBatch
+    if JournalBatch.objects.filter(source_model="operations.Operation", source_id=str(operation.pk)).exists():
+        raise ValidationError(_("Suppression bloquée : cette opération est déjà comptabilisée dans le grand livre financier."))
+
+    snapshot = {
+        "reference": str(operation.reference), "type": operation.type, "status": operation.status,
+        "amount": str(operation.amount), "fee": str(operation.fee), "currency": operation.currency.code,
+        "agent": operation.agent_id, "account": operation.account_id,
+        "cancel_reason": operation.cancel_reason,
+        "cancelled_at": operation.cancelled_at.isoformat() if operation.cancelled_at else None,
+    }
+    OperationRequest.objects.filter(operation=operation).delete()
+    audit_record(actor=purged_by, action="OPERATION_PURGE", instance=operation, before=snapshot, after={"reason": reason.strip()})
+    operation.delete()
 
 
 @ledger_atomic

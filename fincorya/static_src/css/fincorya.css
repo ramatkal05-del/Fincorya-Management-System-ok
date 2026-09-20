@@ -53,7 +53,7 @@ th{color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.
 .empty-state h3{color:var(--graphite)}
 .mobile-only{display:none}
 .icon-button{width:44px;height:44px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer}
-@media(max-width:820px){
+@media(max-width:1024px){
 .mobile-only{display:inline-grid;place-items:center}
 }
 @media(max-width:480px){

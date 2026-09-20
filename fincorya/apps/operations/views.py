@@ -12,10 +12,11 @@ from apps.accounts.views import mfa_required
 from apps.cash.models import CashAccount
 from apps.pricing.models import TariffSchedule
 from apps.pricing.services import current_rate_to_usd, from_usd, lookup_fee
-from .forms import (OperationCancellationForm, OperationFilterForm, OperationForm, OperationRevisionForm,
-                    TransactionServiceOptionForm)
+from .forms import (OperationCancellationForm, OperationFilterForm, OperationForm, OperationPurgeForm,
+                    OperationRevisionForm, TransactionServiceOptionForm)
 from .models import Operation, OperationStatus, OperationType, TransactionServiceOption
-from .services import cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer, revise_operation
+from .services import (cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer,
+                        purge_cancelled_operation, revise_operation)
 
 
 def _operations_for(user):
@@ -107,7 +108,18 @@ def operation_preview(request):
             manual_fee=None, actor=request.user, fee_justification="",
             fee_mode=fee_mode, operation_type=op_type,
         )
-        total = pricing["base_amount"] + pricing["fee"] if op_type == OperationType.SENT_TRANSFER else pricing["base_amount"]
+        if op_type == OperationType.WITHDRAWAL:
+            # "Frais ajoutés" : le client reçoit le montant saisi en entier,
+            # le frais est prélevé ailleurs (total = principal + frais).
+            # "Frais déduits" : le frais est retranché du montant saisi.
+            if fee_mode == "DEDUCTED":
+                total, net = pricing["base_amount"], pricing["base_amount"] - pricing["fee"]
+            else:
+                total, net = pricing["base_amount"] + pricing["fee"], pricing["base_amount"]
+        elif op_type == OperationType.SENT_TRANSFER:
+            total, net = pricing["base_amount"] + pricing["fee"], pricing["base_amount"]
+        else:
+            total, net = pricing["base_amount"], pricing["base_amount"]
         context = {
             "fee_mode": fee_mode,
             "amount": pricing["base_amount"],
@@ -118,7 +130,7 @@ def operation_preview(request):
             "fee_usd": pricing["fee_usd"],
             "fee_local": pricing["fee"],
             "total": total,
-            "net": pricing["base_amount"] - pricing["fee"] if op_type == OperationType.WITHDRAWAL else pricing["base_amount"],
+            "net": net,
         }
         return render(request, "operations/_preview.html", context)
     except (CashAccount.DoesNotExist, TariffSchedule.DoesNotExist, InvalidOperation, ValueError, ValidationError, PermissionDenied) as exc:
@@ -133,6 +145,7 @@ def operation_detail(request, reference):
         "operation": operation,
         "cancellation_form": OperationCancellationForm(),
         "revision_form": OperationRevisionForm(initial={"amount": operation.amount, "fee": operation.fee, "note": operation.note}),
+        "purge_form": OperationPurgeForm(),
     })
 
 
@@ -152,6 +165,26 @@ def operation_cancel(request, reference):
             messages.success(request, "Opération annulée avec écriture compensatoire.")
     else:
         messages.error(request, "Le motif d'annulation est invalide.")
+    return redirect("operations:detail", reference=reference)
+
+
+@require_POST
+@mfa_required
+def operation_purge(request, reference):
+    if request.user.role != Role.ADMIN:
+        raise PermissionDenied
+    operation = get_object_or_404(_operations_for(request.user), reference=reference)
+    form = OperationPurgeForm(request.POST)
+    if form.is_valid():
+        try:
+            purge_cancelled_operation(operation_id=operation.pk, purged_by=request.user, reason=form.cleaned_data["reason"])
+        except (ValidationError, PermissionDenied) as exc:
+            messages.error(request, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
+            return redirect("operations:detail", reference=reference)
+        else:
+            messages.success(request, f"Opération {reference} supprimée définitivement.")
+            return redirect("operations:list")
+    messages.error(request, "Confirmez la suppression en saisissant un motif et le mot SUPPRIMER.")
     return redirect("operations:detail", reference=reference)
 
 

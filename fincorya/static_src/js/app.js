@@ -105,7 +105,7 @@
   const profileButton = workspace.querySelector("[data-profile-toggle]");
   const profileDropdown = workspace.querySelector("[data-profile-dropdown]");
 
-  const mobileQuery = window.matchMedia("(max-width: 820px)");
+  const mobileQuery = window.matchMedia("(max-width: 1024px)");
   const isMobile = () => mobileQuery.matches;
   const setNavigation = (open, restoreFocus = false) => {
     sidebar?.classList.toggle("is-open", open);

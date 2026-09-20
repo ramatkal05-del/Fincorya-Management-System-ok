@@ -11,5 +11,6 @@ urlpatterns = [
     path("<uuid:reference>/", views.operation_detail, name="detail"),
     path("<uuid:reference>/payer/", views.operation_pay, name="pay"),
     path("<uuid:reference>/annuler/", views.operation_cancel, name="cancel"),
+    path("<uuid:reference>/supprimer/", views.operation_purge, name="purge"),
     path("<uuid:reference>/corriger/", views.operation_revise, name="revise"),
 ]

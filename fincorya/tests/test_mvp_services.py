@@ -12,7 +12,7 @@ from apps.cash.models import ClosureStatus, DailyClosure
 from apps.cash.services import adjust_global_cash, allocate_cash, close_cash_day, confirm_handover, handover_cash
 from apps.expenses.models import ApprovalDecision, Expense, ExpenseStatus
 from apps.expenses.services import decide_expense
-from apps.operations.models import OperationStatus
+from apps.operations.models import FeeMode, OperationStatus
 from apps.operations.services import cancel_operation, create_sent_transfer, create_withdrawal, pay_received_transfer, receive_transfer, revise_operation
 from apps.pricing.models import Currency, ExchangeRate, TariffSchedule, TariffTier
 from apps.pricing.services import lookup_fee, resolve_fee
@@ -139,6 +139,23 @@ class FincoryaServiceTestCase(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.balance, Decimal("1000.00"))
 
+    def test_withdrawal_added_mode_pays_client_the_full_entered_amount(self):
+        """Frais ajoutés : le client (bénéficiaire) reçoit le montant saisi
+        en entier ; le frais est prélevé ailleurs (ex. déjà collecté sur
+        l'envoi d'origine) et ne réduit pas ce paiement."""
+        operation = create_withdrawal(agent=self.agent, account_id=self.account.pk, amount=Decimal("300"), tariff_schedule=self.schedule, fee_mode=FeeMode.ADDED)
+        self.account.refresh_from_db()
+        self.assertEqual(operation.fee, Decimal("15.00"))
+        self.assertEqual(self.account.balance, Decimal("700.00"))  # 1000 - 300, fee not deducted
+
+    def test_withdrawal_deducted_mode_subtracts_fee_from_entered_amount(self):
+        """Frais déduits : le frais calculé sur le montant saisi est
+        retranché avant remise au client."""
+        operation = create_withdrawal(agent=self.agent, account_id=self.account.pk, amount=Decimal("115"), tariff_schedule=self.schedule, fee_mode=FeeMode.DEDUCTED)
+        self.account.refresh_from_db()
+        self.assertEqual(operation.fee, Decimal("15.00"))
+        self.assertEqual(self.account.balance, Decimal("900.00"))  # 1000 - (115 - 15)
+
     def test_revision_creates_balancing_adjustment_and_blocks_fields(self):
         operation = create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule)
         revise_operation(operation_id=operation.pk, changes={"amount": Decimal("30")}, reason="Montant corrigé", revised_by=self.agent)
@@ -237,7 +254,9 @@ class FincoryaServiceTestCase(TestCase):
         create_withdrawal(agent=self.agent, account_id=account.pk, amount=Decimal("20"), tariff_schedule=self.schedule)
         account.refresh_from_db()
         self.assertTrue(account.is_active)
-        self.assertEqual(account.balance, Decimal("85.00"))
+        # Default fee_mode is ADDED: the client receives the full amount
+        # entered (20), the fee is not deducted from this payout.
+        self.assertEqual(account.balance, Decimal("80.00"))
 
     def test_admin_can_generate_consolidated_monthly_report(self):
         create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule,

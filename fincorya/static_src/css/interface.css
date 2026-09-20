@@ -21,7 +21,7 @@
 .finance-form input[type="checkbox"]{width:18px;height:18px;accent-color:var(--brand-primary)}
 .finance-form fieldset{min-width:0;padding:20px;border:1px solid var(--line);border-radius:10px}.finance-form fieldset>div{display:grid;gap:8px;margin-bottom:14px}
 .finance-form .helptext{color:var(--text-muted);font-size:12px}.finance-form .button-row{display:flex;flex-wrap:wrap}
-@media(max-width:820px){.account-role-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-form{padding:20px}.finance-record{padding:20px}}
+@media(max-width:1024px){.account-role-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-form{padding:20px}.finance-record{padding:20px}}
 @media(max-width:560px){.account-role-grid{grid-template-columns:1fr}.finance-tabs{flex-wrap:nowrap;overflow-x:auto}.finance-tabs .button{flex:0 0 auto;width:auto}.managed-account-form{grid-template-columns:1fr}.panel-heading:has(#role-filter){align-items:flex-start;flex-direction:column;gap:12px}}
 @font-face { font-family:Inter; src:url('/static/assets/fonts/Inter-Regular.woff2') format('woff2'); font-style:normal; font-weight:400; font-display:swap; }
 @font-face { font-family:Inter; src:url('/static/assets/fonts/Inter-Medium.woff2') format('woff2'); font-style:normal; font-weight:500; font-display:swap; }
@@ -219,7 +219,7 @@ tbody tr:hover { background:#f5faf7; }
   .content-grid,.insight-grid { grid-template-columns:minmax(0,1fr); }
   .fc-search { width:min(360px,35vw); } .workspace-content { padding:24px; }
 }
-@media (max-width:820px) {
+@media (max-width:1024px) {
   .workspace { grid-template-columns:minmax(0,1fr); }
   .workspace-topbar { padding:0 16px; height:68px; gap:12px; }
   .workspace-context { display:none; } .fc-search { flex:1; width:auto; }

@@ -122,6 +122,19 @@ class OperationCancellationForm(forms.Form):
     reason = forms.CharField(label="Motif d'annulation", min_length=5, widget=forms.Textarea(attrs={"rows": 3}))
 
 
+class OperationPurgeForm(forms.Form):
+    reason = forms.CharField(label="Motif de suppression définitive", min_length=5, widget=forms.Textarea(attrs={"rows": 3}))
+    confirm = forms.CharField(
+        label="Tapez SUPPRIMER pour confirmer", widget=forms.TextInput(attrs={"autocomplete": "off"}),
+    )
+
+    def clean_confirm(self):
+        value = (self.cleaned_data.get("confirm") or "").strip().upper()
+        if value != "SUPPRIMER":
+            raise forms.ValidationError("Tapez exactement SUPPRIMER pour confirmer la suppression définitive.")
+        return value
+
+
 class OperationRevisionForm(forms.Form):
     amount = forms.DecimalField(label="Montant corrigé", min_value=0.01, max_digits=16, decimal_places=2)
     fee = forms.DecimalField(label="Commission corrigée", min_value=0, max_digits=12, decimal_places=2)

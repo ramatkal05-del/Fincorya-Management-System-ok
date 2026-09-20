@@ -11,4 +11,9 @@
   {% if operation.status == 'COMPLETED' %}<details class="panel control-panel danger-control"><summary>Annuler l'opération</summary><p class="muted">L'annulation est définitive et crée automatiquement le contre-mouvement exact.</p><form method="post" action="{% url 'operations:cancel' operation.reference %}" class="stack-form">{% csrf_token %}{% for field in cancellation_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<button class="button button-danger" type="submit">Confirmer l'annulation</button></form></details>{% endif %}
 </section>
 {% endif %}
+{% if operation.status == 'CANCELLED' and request.user.role == 'ADMIN' %}
+<section class="operation-control-grid" aria-label="Contrôles de l'opération annulée">
+  <details class="panel control-panel danger-control"><summary>Supprimer définitivement l'opération</summary><p class="muted">Action irréversible réservée à l'administrateur : la ligne de l'opération est retirée de la base. Refusée si une révision, une attribution partenaire ou une écriture comptable y est encore rattachée ; les mouvements de caisse compensatoires restent en revanche conservés (grand livre immuable).</p><form method="post" action="{% url 'operations:purge' operation.reference %}" class="stack-form">{% csrf_token %}{% for field in purge_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<button class="button button-danger" type="submit">Supprimer définitivement</button></form></details>
+</section>
+{% endif %}
 {% endblock %}
