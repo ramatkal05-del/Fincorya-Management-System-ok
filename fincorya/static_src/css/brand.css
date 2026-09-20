@@ -61,8 +61,9 @@ body { color: var(--brand-text); background: var(--brand-light); }
 .field textarea:focus,
 .stack-form input:focus,
 .stack-form textarea:focus {
-  outline: 3px solid rgba(201, 162, 39, .30);
+  outline: none;
   border-color: var(--brand-primary);
+  box-shadow: var(--ui-focus);
 }
 
 .button:focus-visible,

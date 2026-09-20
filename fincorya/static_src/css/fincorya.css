@@ -15,11 +15,11 @@ h2{font-size:1.5rem;line-height:1.25}
 .auth-card{width:min(100%,480px);background:#fff;border:1px solid var(--line);border-radius:20px;padding:clamp(1.5rem,4vw,3rem);box-shadow:var(--shadow)}
 .auth-card h2{margin-bottom:.45rem}
 .form-stack{display:grid;gap:1.2rem;margin:1.75rem 0}
-.field{display:grid;gap:.45rem}
+.field{display:grid;gap:.45rem;align-content:start}
 .field label{font-size:.9rem;font-weight:700}
 .field input{width:100%;min-height:48px;border:1px solid #bac7c2;border-radius:10px;padding:.75rem .9rem;color:var(--graphite);background:#fff;transition:border-color .2s,box-shadow .2s}
 .field input:hover{border-color:#79948a}
-.field input:focus{outline:none;border-color:var(--emerald);box-shadow:0 0 0 3px rgba(201,162,39,.28)}
+.field input:focus{outline:none;border-color:var(--emerald);box-shadow:0 0 0 3px rgba(0,107,79,.14)}
 .field-error{color:var(--danger);font-size:.85rem}
 .button{display:inline-flex;min-height:46px;align-items:center;justify-content:center;gap:.5rem;padding:.7rem 1.05rem;border:1px solid transparent;border-radius:10px;font-weight:750;text-decoration:none;cursor:pointer;transition:background-color .2s,border-color .2s,color .2s}
 .button:focus-visible,.icon-button:focus-visible,.text-link:focus-visible,summary:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
