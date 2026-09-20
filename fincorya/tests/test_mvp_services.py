@@ -18,7 +18,8 @@ from apps.pricing.models import Currency, ExchangeRate, TariffSchedule, TariffTi
 from apps.pricing.services import lookup_fee, resolve_fee
 from apps.profits.models import ProfitPeriod
 from apps.profits.services import calculate_profit_period
-from apps.reports.services import generate_monthly_report, generate_operation_report, monthly_financial_snapshot
+from apps.reports.services import generate_monthly_report, generate_operation_report, monthly_financial_snapshot, operation_report_snapshot
+from apps.stakeholders.models import Stakeholder
 
 
 class FincoryaServiceTestCase(TestCase):
@@ -155,6 +156,29 @@ class FincoryaServiceTestCase(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(operation.fee, Decimal("15.00"))
         self.assertEqual(self.account.balance, Decimal("900.00"))  # 1000 - (115 - 15)
+
+    def test_cancelled_operations_are_excluded_from_commission_totals(self):
+        """A cancelled operation's fee is fully reversed and must not inflate the
+        commission totals shown in the shareholder/finance activity report or the
+        operations export, even though it must stay visible in the detail list."""
+        from apps.finance.reporting import build_report
+
+        shareholder = User.objects.create_user(email="shareholder@fincorya.test", password="test", role="SHAREHOLDER")
+        Stakeholder.objects.create(name="Test Shareholder", type="SHAREHOLDER", owner=shareholder)
+
+        kept = create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule)
+        cancelled = create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule)
+        cancel_operation(operation_id=cancelled.pk, cancelled_by=self.agent, reason="Erreur de saisie")
+
+        today = timezone.localdate()
+        report = build_report(user=shareholder, kind="ACTIVITY", preset="MONTH", anchor=today)
+        detail = next(s for s in report["sections"] if s["title"] == "Détail des opérations")
+        self.assertEqual(len(detail["rows"]), 2)  # both operations still listed
+        self.assertEqual(detail["totals"][0][8], Decimal("5.00"))  # only the completed one's fee counted
+
+        snapshot = operation_report_snapshot(user=self.admin, start_date=today, end_date=today)
+        self.assertEqual(snapshot["totals"]["count"], 2)
+        self.assertEqual(snapshot["totals"]["by_currency"]["USD"]["fees"], "5.00")
 
     def test_revision_creates_balancing_adjustment_and_blocks_fields(self):
         operation = create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40"), tariff_schedule=self.schedule)

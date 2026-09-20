@@ -7,7 +7,7 @@ from pathlib import Path
 
 from django.core.files.base import ContentFile
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Sum
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -26,7 +26,7 @@ from reportlab.platypus import CondPageBreak, Paragraph, SimpleDocTemplate, Spac
 from apps.accounts.models import Role
 from apps.audit.services import record
 from apps.contracts.models import Contract
-from apps.operations.models import Operation
+from apps.operations.models import Operation, OperationStatus
 from apps.expenses.models import Expense
 from apps.profits.models import Distribution, ProfitPeriod
 from apps.stakeholders.models import Investment, PartnerOperation, PaymentFrequency, Stakeholder
@@ -88,6 +88,10 @@ def operation_report_snapshot(*, user, start_date, end_date):
             "service": operation.get_service_display(), "customer_identifier": operation.customer_identifier,
             "customer_name": operation.customer_name,
         })
+        # A cancelled operation's amount/fee were fully reversed: only
+        # COMPLETED operations count towards the totals shown to the user.
+        if operation.status != OperationStatus.COMPLETED:
+            continue
         totals = by_currency.setdefault(operation.currency.code, {"amount": Decimal("0.00"), "fees": Decimal("0.00")})
         totals["amount"] += operation.amount
         totals["fees"] += operation.fee
@@ -318,7 +322,8 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
     periods = ProfitPeriod.objects.filter(start_date__lte=end, end_date__gte=start, status="FINALIZED")
     distributions = Distribution.objects.select_related("allocation__period__currency", "stakeholder").filter(allocation__period__in=periods)
     investments = Investment.objects.select_related("stakeholder", "currency").filter(invested_on__lte=end)
-    partner_rows = PartnerOperation.objects.select_related("stakeholder", "operation__currency").filter(operation__created_at__gte=start_at, operation__created_at__lt=end_at)
+    partner_rows = PartnerOperation.objects.select_related("stakeholder", "operation__currency").filter(
+        operation__status=OperationStatus.COMPLETED, operation__created_at__gte=start_at, operation__created_at__lt=end_at)
     stakeholders = Stakeholder.objects.select_related("owner").prefetch_related(
         Prefetch("contracts", queryset=Contract.objects.order_by("-starts_on", "-id"), to_attr="ordered_contracts")
     ).filter(is_active=True)
@@ -341,9 +346,13 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
         investment_rows.append({"party": row.stakeholder.name, "identifier": str(row.stakeholder.public_id), "amount": str(row.amount), "currency": row.currency.code, "date": str(row.invested_on), "return_percent": str(row.stakeholder.investor_return_percent), "frequency": row.stakeholder.get_payment_frequency_display(), "annual_payment": str(annual_return), "payment_per_due_date": str(installment)})
     partner_commissions = [{"partner": row.stakeholder.name, "operation": str(row.operation.reference), "share_percent": str(row.share_percent), "share": str((row.operation.fee * row.share_percent / Decimal("100")).quantize(Decimal("0.01"))), "currency": row.operation.currency.code} for row in partner_rows]
     totals = {}
-    for op in operation_rows:
-        item = totals.setdefault(op["currency"], {"operations": Decimal("0"), "commissions": Decimal("0"), "expenses": Decimal("0"), "distributions": Decimal("0")})
-        item["operations"] += Decimal(op["amount"]); item["commissions"] += Decimal(op["commission"])
+    # A cancelled operation's amount/fee were fully reversed, so only
+    # COMPLETED operations count towards the operations/commissions totals
+    # (the "Operations" sheet itself still lists every status for the record).
+    completed_summary = operations.filter(status=OperationStatus.COMPLETED).values("currency__code").annotate(volume=Sum("amount"), commissions=Sum("fee"))
+    for row in completed_summary:
+        item = totals.setdefault(row["currency__code"], {"operations": Decimal("0"), "commissions": Decimal("0"), "expenses": Decimal("0"), "distributions": Decimal("0")})
+        item["operations"] += row["volume"] or Decimal("0"); item["commissions"] += row["commissions"] or Decimal("0")
     for row in expense_rows:
         totals.setdefault(row["currency"], {"operations": Decimal("0"), "commissions": Decimal("0"), "expenses": Decimal("0"), "distributions": Decimal("0")})["expenses"] += Decimal(row["amount"])
     for row in salary_rows:

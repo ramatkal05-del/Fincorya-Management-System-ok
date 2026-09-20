@@ -103,9 +103,11 @@ def _money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
 
 
-def _section(title, columns, rows, *, numeric=(), totals=None):
-    """`totals` is (currency_column, [amount_columns]); total rows are laid out on the same columns as the data."""
-    total_rows = _by_currency(rows, len(columns), *totals) if totals else []
+def _section(title, columns, rows, *, numeric=(), totals=None, totals_rows=None):
+    """`totals` is (currency_column, [amount_columns]); total rows are laid out on the same columns as the data.
+    `totals_rows` lets a caller total a narrower subset (e.g. excluding cancelled operations)
+    than what is actually listed in `rows`; it defaults to `rows` when not provided."""
+    total_rows = _by_currency(totals_rows if totals_rows is not None else rows, len(columns), *totals) if totals else []
     return {"title": title, "columns": columns, "rows": rows, "numeric": list(numeric), "totals": total_rows}
 
 
@@ -125,7 +127,7 @@ def _delta(account, start_at, end_at):
 # --------------------------------------------------------------------------- datasets
 
 def _activity(user, start_at, end_at, filters):
-    from apps.operations.models import Operation
+    from apps.operations.models import Operation, OperationStatus
     operations = Operation.objects.select_related("currency", "agent", "account").filter(created_at__gte=start_at, created_at__lt=end_at)
     if finance_policy(user).own_cash_only:
         operations = operations.filter(agent=user)
@@ -137,15 +139,21 @@ def _activity(user, start_at, end_at, filters):
         operations = operations.filter(status=filters["status"])
     if filters.get("country"):
         operations = operations.filter(account__financial_account__country_code=filters["country"])
-    rows = [[timezone.localtime(op.created_at).strftime("%d/%m/%Y %H:%M"), str(op.reference)[:8].upper(), op.get_type_display(), op.get_service_display(),
-             op.get_status_display(), op.agent.get_full_name() or op.agent.email, op.currency.code, op.amount, op.fee, op.supplier_fee] for op in operations.order_by("created_at", "id")]
-    summary = operations.values("currency__code", "type").annotate(n=Count("id"), volume=Sum("amount"), fees=Sum("fee")).order_by("currency__code", "type")
+    ops_list = list(operations.order_by("created_at", "id"))
+    row = lambda op: [timezone.localtime(op.created_at).strftime("%d/%m/%Y %H:%M"), str(op.reference)[:8].upper(), op.get_type_display(), op.get_service_display(),
+                       op.get_status_display(), op.agent.get_full_name() or op.agent.email, op.currency.code, op.amount, op.fee, op.supplier_fee]
+    rows = [row(op) for op in ops_list]
+    # A cancelled operation's fee was reversed in full (net financial impact
+    # zero) and a pending one has not been paid out yet, so neither is a
+    # realized commission: totals only ever count COMPLETED operations.
+    completed_rows = [row(op) for op in ops_list if op.status == OperationStatus.COMPLETED]
+    summary = operations.filter(status=OperationStatus.COMPLETED).values("currency__code", "type").annotate(n=Count("id"), volume=Sum("amount"), fees=Sum("fee")).order_by("currency__code", "type")
     type_labels = dict(Operation._meta.get_field("type").choices)
     sections = [
-        _section("Synthèse par devise et type", ["Devise", "Type", "Nombre", "Volume", "Commissions"],
+        _section("Synthèse par devise et type (opérations terminées)", ["Devise", "Type", "Nombre", "Volume", "Commissions"],
                  [[r["currency__code"], type_labels[r["type"]], r["n"], _money(r["volume"]), _money(r["fees"])] for r in summary], numeric=[2, 3, 4]),
         _section("Détail des opérations", ["Date", "Référence", "Type", "Service", "Statut", "Agent", "Devise", "Montant", "Commission", "Frais fournisseur"],
-                 rows, numeric=[7, 8, 9], totals=(6, [7, 8, 9])),
+                 rows, numeric=[7, 8, 9], totals=(6, [7, 8, 9]), totals_rows=completed_rows),
     ]
     if finance_policy(user).own_cash_only:
         sections.insert(0, _agent_cash_day(user, start_at, end_at))
