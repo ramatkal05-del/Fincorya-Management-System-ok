@@ -118,6 +118,11 @@ def _can_manage_account(actor, account, *, close=False):
     return False
 
 
+# Public alias: views need the same rule to decide whether to display the
+# handover/closure actions, without reaching into a private service helper.
+can_manage_account = _can_manage_account
+
+
 def apply_movement(*, account: CashAccount, direction: str, amount: Decimal,
                     movement_type: str, actor, operation=None, note: str = "") -> CashMovement:
     """Must be called from inside a transaction.atomic() block by a locked account."""

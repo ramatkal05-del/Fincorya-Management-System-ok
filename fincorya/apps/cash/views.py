@@ -7,7 +7,7 @@ from apps.accounts.models import Role
 from apps.accounts.views import mfa_required
 from .forms import ClosureForm, HandoverForm
 from .models import CashAccount, CashHandover, GlobalCashAccount, HandoverStatus
-from .services import close_cash_day, confirm_handover, handover_cash
+from .services import can_manage_account, close_cash_day, confirm_handover, handover_cash
 
 
 def _accounts_for(user):
@@ -28,8 +28,14 @@ def cash_list(request):
 @mfa_required
 def cash_detail(request, account_id):
     account = get_object_or_404(_accounts_for(request.user), pk=account_id)
+    can_manage = can_manage_account(request.user, account)
     return render(request, "cash/detail.html", {
         "account": account, "movements": account.movements.select_related("operation")[:50],
+        "can_manage": can_manage,
+        "handover_form": HandoverForm() if can_manage else None,
+        "closure_form": ClosureForm() if can_manage else None,
+        "pending_handovers": account.handovers.filter(status=HandoverStatus.PENDING).select_related("requested_by"),
+        "can_confirm_handover": request.user.role == Role.ADMIN,
     })
 
 
