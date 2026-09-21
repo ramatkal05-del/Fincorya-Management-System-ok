@@ -120,6 +120,26 @@ class FinanceWorkflowTests(FinanceScenario, TestCase):
         self.assertEqual(ledger_balance(self.cash), self.legacy.balance)
         self.assertEqual(ledger_balance(FinancialAccount.objects.get(legacy_global_account=self.global_cash)), self.global_cash.balance)
 
+    def test_closure_variance_adjustment_keeps_both_cash_projections_equal(self):
+        from apps.cash.services import close_cash_day
+        with patch('django.utils.timezone.now', return_value=JULY):
+            close_cash_day(account_id=self.legacy.pk, business_date=date(2026, 7, 15),
+                declared_cash=Decimal('995'), closed_by=self.agent, justification='Écart de comptage')
+        self.legacy.refresh_from_db()
+        self.assertEqual(self.legacy.balance, Decimal('995'))
+        self.assertEqual(ledger_balance(self.cash), self.legacy.balance)
+        self.assertEqual(JournalBatch.objects.filter(event_type='CASH_ADJUSTMENT').count(), 1)
+
+    def test_withdrawal_with_added_fee_keeps_both_cash_projections_equal(self):
+        from apps.operations.models import FeeMode
+        from apps.operations.services import create_withdrawal
+        with patch('django.utils.timezone.now', return_value=JULY):
+            create_withdrawal(agent=self.agent, account_id=self.legacy.pk, amount=Decimal('200'),
+                tariff_schedule=self.tariff, fee_mode=FeeMode.ADDED, idempotency_key='wd-added')
+        self.legacy.refresh_from_db()
+        self.assertEqual(self.legacy.balance, Decimal('800'))
+        self.assertEqual(ledger_balance(self.cash), self.legacy.balance)
+
     def test_partner_commission_payment_and_cancellation_use_the_same_ledger(self):
         op = self.operation(partner=self.partner)
         self.assertEqual(self.operation(partner=self.partner).pk, op.pk)

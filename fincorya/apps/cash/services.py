@@ -240,12 +240,14 @@ def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, cl
     account.is_locked = False
     account.save(update_fields=["is_locked"])
     if variance:
-        apply_movement(
+        adjustment = apply_movement(
             account=account,
             direction=MovementDirection.IN if variance > 0 else MovementDirection.OUT,
             amount=abs(variance), movement_type=MovementType.ADJUSTMENT,
             actor=closed_by, note=f"Report du compté après clôture {business_date}",
         )
+        from apps.finance.events import record_cash_adjustment
+        record_cash_adjustment(adjustment, closed_by)
         recipients = {closed_by, *User.objects.filter(role=Role.ADMIN, is_active=True)}
         for recipient in recipients:
             notify(

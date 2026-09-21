@@ -97,7 +97,16 @@ def record_operation(operation, actor):
     if operation.type == "SENT_TRANSFER":
         lines = [line(account, "DEBIT", operation.amount + operation.fee - supplier_fee), line(transit, "CREDIT", operation.amount)]
     else:
-        lines = [line(transit, "DEBIT", operation.amount), line(account, "CREDIT", operation.amount - operation.fee + supplier_fee)]
+        if operation.type == "WITHDRAWAL" and operation.fee_mode == "ADDED":
+            # Frais ajoutés : la caisse ne décaisse que le principal (+ frais
+            # fournisseur) ; la commission, perçue en amont, reste une créance
+            # de règlement sur le transit.
+            cash_out = operation.amount + supplier_fee
+            transit_in = operation.amount + operation.fee
+        else:
+            cash_out = operation.amount - operation.fee + supplier_fee
+            transit_in = operation.amount
+        lines = [line(transit, "DEBIT", transit_in), line(account, "CREDIT", cash_out)]
     lines.append(line(income, "CREDIT", operation.fee - partner_fee))
     if partner_fee:
         lines.append(line(counterpart(operation.currency, AccountType.PARTNER_PAYABLE, party=attribution.stakeholder), "CREDIT", partner_fee))
@@ -110,6 +119,22 @@ def record_operation(operation, actor):
     operation.account.refresh_from_db()
     _assert_projection(account, operation.account)
     return result
+
+
+@ledger_atomic
+def record_cash_adjustment(movement, actor):
+    """Project a legacy ADJUSTMENT movement (clôture variance) into the ledger."""
+    if not active_cutover():
+        return None
+    cash = mapped_cash(movement.account)
+    adjust = counterpart(cash.currency, AccountType.ADJUSTMENT)
+    cash_side = "DEBIT" if movement.direction == "IN" else "CREDIT"
+    batch = record_event(actor=actor, source=movement, event="CASH_ADJUSTMENT", effective_at=movement.created_at,
+        lines=[line(cash, cash_side, movement.amount),
+               line(adjust, "CREDIT" if cash_side == "DEBIT" else "DEBIT", movement.amount)])
+    movement.account.refresh_from_db()
+    _assert_projection(cash, movement.account)
+    return batch
 
 
 @ledger_atomic
