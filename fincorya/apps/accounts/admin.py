@@ -1,9 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.utils import timezone
 from config.admin import ArchiveAdminMixin
 
-from .models import Role, User
+from .models import AccountActivationToken, Role, User
 
 
 class AccountCreationForm(UserCreationForm):
@@ -109,3 +110,28 @@ class FincoryaUserAdmin(ArchiveAdminMixin, UserAdmin):
             if not change:
                 obj.is_superuser = False
         super().save_model(request, obj, form, change)
+
+
+@admin.register(AccountActivationToken)
+class AccountActivationTokenAdmin(admin.ModelAdmin):
+    """Historique des liens d'activation — jamais le jeton en clair (haché en base)."""
+    list_display = ("user", "created_at", "expires_at", "status")
+    readonly_fields = ("user", "created_by", "created_at", "expires_at", "used_at", "invalidated_at")
+    actions = ["invalider"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def status(self, obj):
+        if obj.used_at:
+            return "Utilisé"
+        if obj.invalidated_at:
+            return "Invalidé"
+        if obj.expires_at < timezone.now():
+            return "Expiré"
+        return "Valide"
+
+    @admin.action(description="Invalider les liens sélectionnés")
+    def invalider(self, request, queryset):
+        count = queryset.filter(used_at__isnull=True, invalidated_at__isnull=True).update(invalidated_at=timezone.now())
+        self.message_user(request, f"{count} lien(s) invalidé(s).")

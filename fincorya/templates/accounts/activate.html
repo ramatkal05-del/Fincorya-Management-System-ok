@@ -1,0 +1,15 @@
+{% extends "accounts/auth_base.html" %}{% load form_accessibility %}
+{% block title %}Activer mon compte — FINCORYA{% endblock %}
+{% block body_class %}auth-page activate-page{% endblock %}
+{% block auth_content %}
+<div class="login-reveal">
+  <h2>Bienvenue, {{ activation_user.get_full_name|default:activation_user.email }}</h2>
+  <p class="muted">Définissez votre mot de passe pour activer votre compte {{ activation_user.get_role_display }}.</p>
+  {% if form.non_field_errors %}<p class="login-state login-state-error" role="alert">{{ form.non_field_errors.0 }}</p>{% endif %}
+  <form method="post" class="form-stack" novalidate>{% csrf_token %}
+    {% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}{% if field.help_text %}<small id="{{ field.auto_id }}_help">{{ field.help_text }}</small>{% endif %}{% if field.errors %}<span id="{{ field.auto_id }}_errors" class="field-error" role="alert">{{ field.errors.0 }}</span>{% endif %}</div>{% endfor %}
+    <button class="button button-primary" type="submit">Activer mon compte</button>
+  </form>
+  <p class="auth-help">Ce lien est personnel, à usage unique et expire après 72 heures.</p>
+</div>
+{% endblock %}

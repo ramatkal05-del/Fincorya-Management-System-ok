@@ -133,6 +133,10 @@ if ENVIRONMENT == "production":
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "accounts:login"
+# Absolute origin used to build links/images inside outgoing e-mails (activation
+# links, "consulter mon espace" buttons, logo). Relative URLs are meaningless
+# once rendered in a mail client, so this must point at the real deployment.
+SITE_URL = env("SITE_URL", default="http://localhost:8000").rstrip("/")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="FINCORYA <noreply@fincorya.local>")
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="")

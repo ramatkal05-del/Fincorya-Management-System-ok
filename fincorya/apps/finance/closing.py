@@ -186,6 +186,17 @@ def close_period(*, period_id, actor):
     period.status, period.locked_at, period.locked_by = PeriodStatus.LOCKED, timezone.now(), actor
     save_internal(period)
     record(actor=actor, action="FINANCE_PERIOD_LOCK", instance=period, after={"controls": []})
+    # Notifications never gate (nor roll back) a real financial closing: only
+    # fire once the LOCK is actually committed, and swallow any failure here.
+    from django.db import transaction as _txn
+
+    def _notify():
+        try:
+            from apps.notifications.senders import notify_period_closed
+            notify_period_closed(period=period)
+        except Exception:
+            pass
+    _txn.on_commit(_notify)
     return period
 
 
@@ -231,6 +242,7 @@ def approve_distributions(*, profit_id, amount, actor):
     if not plan or not plan.get("weights"):
         raise ValidationError("Le plan de distribution figé à la clôture est absent ; période à qualifier.")
     allocation = Allocation.objects.create(period=profit, bucket="FINANCE_DIVIDENDS", percentage=100, amount=amount)
+    notify_targets = []
     for stakeholder_id, part in split_amount(amount, plan["weights"]):
         party = Stakeholder.objects.get(pk=stakeholder_id)
         distribution = Distribution.objects.create(allocation=allocation, stakeholder=party, amount=part)
@@ -239,9 +251,24 @@ def approve_distributions(*, profit_id, amount, actor):
                 lines=[line(counterpart(profit.currency, AccountType.CAPITAL), "DEBIT", part),
                        line(counterpart(profit.currency, AccountType.DISTRIBUTION_PAYABLE, party=party), "CREDIT", part)])
             distribution.save(update_fields=["approval_batch"])
+            notify_targets.append(distribution.pk)
     profit.proposed_distribution = amount
     profit.save(update_fields=["proposed_distribution"])
     record(actor=actor, action="FINANCE_DISTRIBUTION_APPROVE", instance=profit, after={"amount": str(amount)})
+    from django.db import transaction as _txn
+
+    def _notify():
+        from apps.notifications.senders import send_dividend_info, send_investor_due_from_distribution
+        from apps.stakeholders.models import StakeholderType
+        for distribution in Distribution.objects.filter(pk__in=notify_targets).select_related("stakeholder__owner", "allocation__period__currency"):
+            try:
+                if distribution.stakeholder.type == StakeholderType.SHAREHOLDER:
+                    send_dividend_info(distribution=distribution)
+                elif distribution.stakeholder.type == StakeholderType.INVESTOR:
+                    send_investor_due_from_distribution(distribution=distribution)
+            except Exception:
+                pass
+    _txn.on_commit(_notify)
     return profit
 
 
@@ -280,4 +307,18 @@ def pay_distribution(*, distribution_id, account_id=None, destination="PAYOUT", 
         row.status = DistributionStatus.PAID
     row.paid_at = timezone.now()
     row.save(update_fields=["payment_batch", "status", "paid_at"])
+    if row.status == DistributionStatus.PAID:
+        from django.db import transaction as _txn
+
+        def _notify():
+            from apps.notifications.senders import send_dividend_paid, send_investor_paid_from_distribution
+            from apps.stakeholders.models import StakeholderType
+            try:
+                if row.stakeholder.type == StakeholderType.SHAREHOLDER:
+                    send_dividend_paid(distribution=row)
+                elif row.stakeholder.type == StakeholderType.INVESTOR:
+                    send_investor_paid_from_distribution(distribution=row)
+            except Exception:
+                pass
+        _txn.on_commit(_notify)
     return row

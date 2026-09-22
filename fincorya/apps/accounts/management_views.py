@@ -9,6 +9,7 @@ from django.views.decorators.http import require_POST
 
 from apps.audit.services import record
 from .models import Role, User
+from .services import issue_activation_token
 from .views import mfa_required
 
 
@@ -72,10 +73,30 @@ def account_create(request, role):
             user = form.save()
             record(actor=request.user, action="USER_CREATE", instance=user,
                    after={"email": user.email, "role": user.role})
-        messages.success(request, f"Compte {user.get_role_display().lower()} créé : {user.email}.")
+            _, raw_token = issue_activation_token(user=user, actor=request.user)
+            transaction.on_commit(lambda: _send_welcome_email(user, raw_token))
+        messages.success(request, f"Compte {user.get_role_display().lower()} créé : {user.email}. Un e-mail de bienvenue a été mis en file d'envoi.")
         return redirect("accounts:manage")
     return render(request, "accounts/management_form.html", {
         "form": form, "role_label": Role(role).label, "role": role})
+
+
+def _send_welcome_email(user, raw_token):
+    from apps.notifications.senders import send_welcome_email
+    send_welcome_email(user=user, raw_token=raw_token)
+
+
+@require_POST
+@mfa_required
+def account_resend_invitation(request, pk):
+    require_admin(request.user)
+    user = get_object_or_404(User, pk=pk, is_active=True)
+    with transaction.atomic():
+        _, raw_token = issue_activation_token(user=user, actor=request.user)
+        record(actor=request.user, action="USER_INVITATION_RESEND", instance=user)
+        transaction.on_commit(lambda: _send_welcome_email(user, raw_token))
+    messages.success(request, f"Invitation renvoyée à {user.email}. Le lien précédent est désormais invalide.")
+    return redirect("accounts:manage")
 
 
 @require_POST

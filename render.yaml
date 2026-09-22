@@ -80,3 +80,85 @@ services:
       name: fincorya-private-files
       mountPath: /var/data
       sizeGB: 10
+
+  # Traite en continu la file de notifications (apps.notifications) : envoie
+  # les e-mails persistés par notify(), avec retries et backoff exponentiel.
+  # Sans ce service, les notifications restent PENDING indéfiniment.
+  - type: worker
+    name: fincorya-notification-worker
+    runtime: python
+    plan: starter
+    buildCommand: "./build.sh"
+    startCommand: "cd fincorya && python manage.py notification_worker"
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: BUSINESS_TIME_ZONE
+        value: Europe/Istanbul
+      - key: SITE_URL
+        value: https://fincorya.com
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DEFAULT_FROM_EMAIL
+        value: "FINCORYA <noreply@fincorya.com>"
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: DB_NAME
+        fromDatabase: {name: fincorya-db, property: database}
+      - key: DB_USER
+        fromDatabase: {name: fincorya-db, property: user}
+      - key: DB_PASSWORD
+        fromDatabase: {name: fincorya-db, property: password}
+      - key: DB_HOST
+        fromDatabase: {name: fincorya-db, property: host}
+      - key: DB_PORT
+        fromDatabase: {name: fincorya-db, property: port}
+
+  # Vérifie toutes les 15 minutes s'il faut déclencher le rappel hebdomadaire
+  # des agents (fenêtre "clôture configurée - N heures"). La commande est un
+  # no-op hors fenêtre et idempotente par agent/date de clôture.
+  - type: cron
+    name: fincorya-weekly-agent-reminder
+    runtime: python
+    plan: starter
+    schedule: "*/15 * * * *"
+    buildCommand: "./build.sh"
+    startCommand: "cd fincorya && python manage.py send_weekly_agent_reminders"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: BUSINESS_TIME_ZONE
+        value: Europe/Istanbul
+      - key: SITE_URL
+        value: https://fincorya.com
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DB_NAME
+        fromDatabase: {name: fincorya-db, property: database}
+      - key: DB_USER
+        fromDatabase: {name: fincorya-db, property: user}
+      - key: DB_PASSWORD
+        fromDatabase: {name: fincorya-db, property: password}
+      - key: DB_HOST
+        fromDatabase: {name: fincorya-db, property: host}
+      - key: DB_PORT
+        fromDatabase: {name: fincorya-db, property: port}

@@ -1,7 +1,7 @@
 import time
 from datetime import timedelta
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -41,9 +41,15 @@ class Command(BaseCommand):
             delivery.save(update_fields=["status", "attempts", "updated_at"])
             subject = delivery.notification.subject
             body = delivery.notification.body
+            html_body = delivery.notification.html_body
             recipient = delivery.notification.recipient.email
         try:
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [recipient], fail_silently=False)
+            if html_body:
+                message = EmailMultiAlternatives(subject, body, settings.DEFAULT_FROM_EMAIL, [recipient])
+                message.attach_alternative(html_body, "text/html")
+                message.send(fail_silently=False)
+            else:
+                send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [recipient], fail_silently=False)
         except Exception as exc:
             error = str(exc)[:2000]
             sent = False

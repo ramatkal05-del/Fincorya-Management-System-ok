@@ -26,4 +26,16 @@ def decide_expense(*, expense_id, actor, decision, comment=""):
     if expense.status == ExpenseStatus.APPROVED:
         from apps.finance.events import recognize_expense
         recognize_expense(expense, actor)
+        from django.db import transaction
+
+        def _notify():
+            from apps.notifications.senders import send_investor_due_from_expense, send_salary_info
+            try:
+                if expense.category == "SALARY":
+                    send_salary_info(expense=expense)
+                elif expense.category == "INVESTOR_RETURN":
+                    send_investor_due_from_expense(expense=expense)
+            except Exception:
+                pass
+        transaction.on_commit(_notify)
     return approval

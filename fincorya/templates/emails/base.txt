@@ -1,0 +1,13 @@
+{{ brand.signature }} — {{ brand.slogan }}
+
+{{ title }}
+
+{% for paragraph in paragraphs %}{{ paragraph }}
+
+{% endfor %}{% if facts %}{% for fact in facts %}{{ fact.label }} : {{ fact.value }}
+{% endfor %}
+{% endif %}{% if cta_url %}{{ cta_label }} : {{ cta_url }}
+
+{% endif %}{{ footer_note|default:"Cet e-mail est envoyé automatiquement par le système de gestion interne FINCORYA. Connectez-vous à votre espace personnel pour consulter le détail." }}
+
+{{ brand.signature }}

@@ -12,12 +12,13 @@ import qrcode
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout, update_session_auth_hash
+from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.http import FileResponse, Http404
 from django.core.mail import send_mail
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.db import transaction
@@ -29,7 +30,8 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from apps.audit.services import record
 from .forms import EmailLoginForm, ProfileForm, SecurePasswordChangeForm, TokenForm
 from .models import Role, User
-from .services import clear_auth_failures, is_throttled, register_auth_failure, regenerate_recovery_codes
+from .services import (clear_auth_failures, get_valid_activation_token, consume_activation_token,
+                       is_throttled, register_auth_failure, regenerate_recovery_codes)
 from config.business_time import business_day_bounds
 
 
@@ -418,3 +420,21 @@ def dashboard(request):
         "pending_expenses": pending_expenses,
         "unread_notifications": notifications,
     })
+
+
+@never_cache
+def activate_account(request, user_id, token):
+    """Public, single-use link from the welcome/resend e-mail. Never accepts
+    a password by e-mail: this view is the only way to set the initial one."""
+    user = get_object_or_404(User, pk=user_id, is_active=True)
+    activation = get_valid_activation_token(user_id=user.pk, raw_token=token)
+    if activation is None:
+        messages.error(request, "Ce lien d’activation est invalide, déjà utilisé ou expiré. Demandez à un administrateur de le renvoyer.")
+        return redirect("accounts:login")
+    form = SetPasswordForm(user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        consume_activation_token(token=activation, new_password=form.cleaned_data["new_password1"])
+        record(actor=user, action="ACCOUNT_ACTIVATED", instance=user)
+        messages.success(request, "Votre mot de passe est défini. Vous pouvez maintenant vous connecter.")
+        return redirect("accounts:login")
+    return render(request, "accounts/activate.html", {"form": form, "activation_user": user})

@@ -3,7 +3,41 @@ import hashlib
 from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
-from .models import AuthThrottle, RecoveryCode
+from .models import AccountActivationToken, AuthThrottle, RecoveryCode
+
+ACTIVATION_TOKEN_TTL_HOURS = 72
+
+
+@transaction.atomic
+def issue_activation_token(*, user, actor):
+    """Invalidate any still-usable link for this user and issue a fresh one.
+
+    Used both for the initial welcome e-mail and for an administrator's
+    "resend invitation" action — either way, only the newest link works.
+    """
+    AccountActivationToken.objects.filter(user=user, used_at__isnull=True, invalidated_at__isnull=True).update(invalidated_at=timezone.now())
+    raw_token = secrets.token_urlsafe(32)
+    token = AccountActivationToken(user=user, created_by=actor, expires_at=timezone.now() + timedelta(hours=ACTIVATION_TOKEN_TTL_HOURS))
+    token.set_token(raw_token)
+    token.save()
+    return token, raw_token
+
+
+def get_valid_activation_token(*, user_id, raw_token):
+    for token in AccountActivationToken.objects.filter(user_id=user_id, used_at__isnull=True, invalidated_at__isnull=True).order_by("-created_at"):
+        if token.is_valid() and token.matches(raw_token):
+            return token
+    return None
+
+
+@transaction.atomic
+def consume_activation_token(*, token, new_password):
+    user = token.user
+    user.set_password(new_password)
+    user.save(update_fields=["password"])
+    token.used_at = timezone.now()
+    token.save(update_fields=["used_at"])
+    return user
 
 
 @transaction.atomic

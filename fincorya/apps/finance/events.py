@@ -219,7 +219,20 @@ def pay_expense(*, expense_id, account_id, amount, actor, idempotency_key):
         effective_at=timezone.now(), description=f"Paiement charge #{expense.pk}", lines=[line(payable, "DEBIT", amount), line(cash, "CREDIT", amount)])
     _post_batch(batch_id=batch.pk, actor=actor)
     _project_payment(cash, amount, actor, f"Paiement charge #{expense.pk}")
-    return ExpensePayment.objects.create(expense=expense, batch=batch, amount=amount, paid_at=batch.effective_at)
+    payment = ExpensePayment.objects.create(expense=expense, batch=batch, amount=amount, paid_at=batch.effective_at)
+    from django.db import transaction
+
+    def _notify():
+        from apps.notifications.senders import send_investor_paid_from_expense, send_salary_paid
+        try:
+            if expense.category == "SALARY":
+                send_salary_paid(payment=payment)
+            elif expense.category == "INVESTOR_RETURN":
+                send_investor_paid_from_expense(payment=payment)
+        except Exception:
+            pass
+    transaction.on_commit(_notify)
+    return payment
 
 
 def _validate_cash_payment(cash, currency_id, amount):
@@ -255,6 +268,15 @@ def pay_partner(*, party_id, account_id, amount, actor, idempotency_key):
         lines=[line(payable, "DEBIT", amount), line(cash, "CREDIT", amount)])
     _post_batch(batch_id=batch.pk, actor=actor)
     _project_payment(cash, amount, actor, f"Règlement partenaire #{party.pk}")
+    from django.db import transaction
+
+    def _notify():
+        from apps.notifications.senders import send_partner_share_paid
+        try:
+            send_partner_share_paid(stakeholder=party, amount=amount, currency_code=cash.currency.code, paid_at=batch.effective_at)
+        except Exception:
+            pass
+    transaction.on_commit(_notify)
     return batch
 
 

@@ -119,3 +119,29 @@ class AuthThrottle(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["key_hash", "action"], name="unique_auth_throttle_key")]
+
+
+class AccountActivationToken(models.Model):
+    """Single-use, time-limited link letting a newly created (or reset) user
+    set their own password. Never carries the password itself — only a
+    random opaque token, hashed at rest like `RecoveryCode`."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="activation_tokens")
+    token_hash = models.CharField(max_length=128)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    invalidated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "used_at", "invalidated_at"], name="activation_token_lookup_idx")]
+
+    def set_token(self, raw_token):
+        self.token_hash = make_password(raw_token)
+
+    def matches(self, raw_token):
+        return check_password(raw_token, self.token_hash)
+
+    def is_valid(self):
+        from django.utils import timezone
+        return self.used_at is None and self.invalidated_at is None and self.expires_at > timezone.now()
