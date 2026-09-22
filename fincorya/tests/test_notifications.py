@@ -15,6 +15,7 @@ from apps.notifications.models import Notification, NotificationDelivery, Notifi
 from apps.notifications.senders import send_salary_paid, send_weekly_agent_reminder
 from apps.notifications.services import notify
 from apps.pricing.models import Currency
+from apps.notifications import background as inline_background
 
 
 @override_settings(MFA_ENABLED=False, LOCAL_AUTH_BYPASS=False,
@@ -158,6 +159,37 @@ class WelcomeEmailAndActivationTests(TestCase):
         NotificationSettings.objects.update_or_create(pk=1, defaults={"enable_welcome_email": False})
         user = self._create_agent(email="no-welcome@notif.test")
         self.assertFalse(Notification.objects.filter(recipient=user, category="WELCOME").exists())
+
+
+class InlineWorkerToggleTests(TestCase):
+    def setUp(self):
+        inline_background._started = False
+
+    def tearDown(self):
+        inline_background._started = False
+
+    def test_start_inline_worker_only_launches_one_thread_even_if_called_twice(self):
+        import unittest.mock as mock
+        with mock.patch("threading.Thread") as thread_cls:
+            inline_background.start_inline_worker()
+            inline_background.start_inline_worker()
+        self.assertEqual(thread_cls.call_count, 1)
+
+    @override_settings(RUN_INLINE_NOTIFICATION_WORKER=False)
+    def test_app_ready_does_not_start_worker_by_default(self):
+        import unittest.mock as mock
+        with mock.patch.object(inline_background, "start_inline_worker") as starter:
+            from apps.notifications.apps import NotificationsConfig
+            NotificationsConfig("apps.notifications", __import__("apps.notifications", fromlist=[""])).ready()
+        starter.assert_not_called()
+
+    @override_settings(RUN_INLINE_NOTIFICATION_WORKER=True)
+    def test_app_ready_starts_worker_when_enabled(self):
+        import unittest.mock as mock
+        with mock.patch("apps.notifications.background.start_inline_worker") as starter:
+            from apps.notifications.apps import NotificationsConfig
+            NotificationsConfig("apps.notifications", __import__("apps.notifications", fromlist=[""])).ready()
+        starter.assert_called_once()
 
 
 @override_settings(MFA_ENABLED=False, LOCAL_AUTH_BYPASS=False,

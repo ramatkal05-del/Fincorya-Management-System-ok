@@ -137,6 +137,10 @@ LOGOUT_REDIRECT_URL = "accounts:login"
 # links, "consulter mon espace" buttons, logo). Relative URLs are meaningless
 # once rendered in a mail client, so this must point at the real deployment.
 SITE_URL = env("SITE_URL", default="http://localhost:8000").rstrip("/")
+# Budget-friendly alternative to a dedicated Render Worker/Cron: run the
+# notification delivery loop and the weekly-reminder check inside the web
+# process itself. See apps/notifications/background.py.
+RUN_INLINE_NOTIFICATION_WORKER = env("RUN_INLINE_NOTIFICATION_WORKER", default=False, cast=as_bool)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="FINCORYA <noreply@fincorya.local>")
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="")

@@ -66,6 +66,16 @@ services:
         sync: false
       - key: EMAIL_USE_TLS
         value: "True"
+      # Envoie les notifications ET verifie le rappel hebdomadaire depuis ce
+      # meme service web (un thread d'arriere-plan), au lieu d'un Worker et
+      # d'un Cron Job Render payants separes. Voir apps/notifications/background.py.
+      # Si un plan permettant des services dedies devient abordable, mettre
+      # ceci a "False" et redeployer fincorya-notification-worker /
+      # fincorya-weekly-agent-reminder (definitions conservees plus bas, en
+      # commentaire) a la place — plus robuste (process isole, redemarrage
+      # independant du web).
+      - key: RUN_INLINE_NOTIFICATION_WORKER
+        value: "True"
       - key: DB_NAME
         fromDatabase: {name: fincorya-db, property: database}
       - key: DB_USER
@@ -81,84 +91,26 @@ services:
       mountPath: /var/data
       sizeGB: 10
 
-  # Traite en continu la file de notifications (apps.notifications) : envoie
-  # les e-mails persistés par notify(), avec retries et backoff exponentiel.
-  # Sans ce service, les notifications restent PENDING indéfiniment.
-  - type: worker
-    name: fincorya-notification-worker
-    runtime: python
-    plan: starter
-    buildCommand: "./build.sh"
-    startCommand: "cd fincorya && python manage.py notification_worker"
-    autoDeploy: true
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: "False"
-      - key: BUSINESS_TIME_ZONE
-        value: Europe/Istanbul
-      - key: SITE_URL
-        value: https://fincorya.com
-      - key: DJANGO_SECRET_KEY
-        generateValue: true
-      - key: DEFAULT_FROM_EMAIL
-        value: "FINCORYA <noreply@fincorya.com>"
-      - key: EMAIL_BACKEND
-        value: django.core.mail.backends.smtp.EmailBackend
-      - key: EMAIL_HOST
-        sync: false
-      - key: EMAIL_PORT
-        value: "587"
-      - key: EMAIL_HOST_USER
-        sync: false
-      - key: EMAIL_HOST_PASSWORD
-        sync: false
-      - key: EMAIL_USE_TLS
-        value: "True"
-      - key: DB_NAME
-        fromDatabase: {name: fincorya-db, property: database}
-      - key: DB_USER
-        fromDatabase: {name: fincorya-db, property: user}
-      - key: DB_PASSWORD
-        fromDatabase: {name: fincorya-db, property: password}
-      - key: DB_HOST
-        fromDatabase: {name: fincorya-db, property: host}
-      - key: DB_PORT
-        fromDatabase: {name: fincorya-db, property: port}
-
-  # Vérifie toutes les 15 minutes s'il faut déclencher le rappel hebdomadaire
-  # des agents (fenêtre "clôture configurée - N heures"). La commande est un
-  # no-op hors fenêtre et idempotente par agent/date de clôture.
-  - type: cron
-    name: fincorya-weekly-agent-reminder
-    runtime: python
-    plan: starter
-    schedule: "*/15 * * * *"
-    buildCommand: "./build.sh"
-    startCommand: "cd fincorya && python manage.py send_weekly_agent_reminders"
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: "False"
-      - key: BUSINESS_TIME_ZONE
-        value: Europe/Istanbul
-      - key: SITE_URL
-        value: https://fincorya.com
-      - key: DJANGO_SECRET_KEY
-        generateValue: true
-      - key: DB_NAME
-        fromDatabase: {name: fincorya-db, property: database}
-      - key: DB_USER
-        fromDatabase: {name: fincorya-db, property: user}
-      - key: DB_PASSWORD
-        fromDatabase: {name: fincorya-db, property: password}
-      - key: DB_HOST
-        fromDatabase: {name: fincorya-db, property: host}
-      - key: DB_PORT
-        fromDatabase: {name: fincorya-db, property: port}
+# --- Option payante (desactivee) : services dedies, plus robustes -----------
+# Decommenter et redeployer via Blueprint si un plan avec Worker/Cron Job
+# devient abordable ; penser a repasser RUN_INLINE_NOTIFICATION_WORKER a
+# "False" sur le service web pour eviter un double traitement (inoffensif
+# mais inutile : event_key et select_for_update(skip_locked) le rendent sur.
+#
+#  - type: worker
+#    name: fincorya-notification-worker
+#    runtime: python
+#    plan: starter
+#    buildCommand: "./build.sh"
+#    startCommand: "cd fincorya && python manage.py notification_worker"
+#    autoDeploy: true
+#    envVars: [... memes variables EMAIL_*/DB_*/SITE_URL que le service web ...]
+#
+#  - type: cron
+#    name: fincorya-weekly-agent-reminder
+#    runtime: python
+#    plan: starter
+#    schedule: "*/15 * * * *"
+#    buildCommand: "./build.sh"
+#    startCommand: "cd fincorya && python manage.py send_weekly_agent_reminders"
+#    envVars: [... memes variables DB_*/SITE_URL/BUSINESS_TIME_ZONE que le service web ...]
