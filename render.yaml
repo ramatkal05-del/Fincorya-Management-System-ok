@@ -52,8 +52,12 @@ services:
         sync: false
       - key: MEDIA_ROOT
         value: /var/data/media
+      # Doit correspondre exactement au compte qui authentifie EMAIL_HOST_USER :
+      # un "From" sur un domaine (fincorya.com) que ce compte ne possede pas
+      # fait echouer l'alignement SPF/DKIM cote Gmail et finit en spam.
+      # A adapter si EMAIL_HOST_USER change (ex: passage a un domaine propre).
       - key: DEFAULT_FROM_EMAIL
-        value: "FINCORYA <noreply@fincorya.com>"
+        value: "FINCORYA <ramatkal05@gmail.com>"
       - key: EMAIL_BACKEND
         value: django.core.mail.backends.smtp.EmailBackend
       - key: EMAIL_HOST
