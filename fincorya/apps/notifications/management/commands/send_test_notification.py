@@ -3,6 +3,7 @@ persist-then-deliver pipeline (so it also exercises the worker/backend)."""
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.accounts.models import User
+from apps.notifications.emailing import absolute_url
 from apps.notifications.models import NotificationCategory
 from apps.notifications.services import notify
 
@@ -23,7 +24,7 @@ class Command(BaseCommand):
             subject="E-mail de test FINCORYA", title="Ceci est un test",
             paragraphs=["Cet e-mail confirme que la configuration d'envoi FINCORYA (identité visuelle, "
                          "file d'attente, worker) fonctionne correctement."],
-            cta_label="Ouvrir FINCORYA", cta_url="/",
+            cta_label="Ouvrir FINCORYA", cta_url=absolute_url("/"),
         )
         self.stdout.write(self.style.SUCCESS(
             f"Test mis en file pour {user.email}. Lancez `manage.py notification_worker --once` pour l'envoyer."
