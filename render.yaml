@@ -42,6 +42,8 @@ services:
         value: fincorya.com,www.fincorya.com
       - key: CSRF_TRUSTED_ORIGINS
         value: https://fincorya.com,https://www.fincorya.com
+      - key: SITE_URL
+        value: https://fincorya.com
       - key: BUSINESS_TIME_ZONE
         value: Europe/Istanbul
       - key: FINANCE_LEDGER_ENABLED
