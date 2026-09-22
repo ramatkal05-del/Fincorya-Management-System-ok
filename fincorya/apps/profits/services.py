@@ -68,6 +68,7 @@ def calculate_profit_period(*, period_id, actor):
     }
     period.status, period.calculated_by, period.calculated_at = ProfitStatus.FINALIZED, actor, timezone.now()
     period.save()
+    Distribution.objects.filter(allocation__period=period).delete()
     Allocation.objects.filter(period=period).delete()
     allocated = Decimal("0.00")
     for index, (bucket, percentage) in enumerate(SPLIT):
