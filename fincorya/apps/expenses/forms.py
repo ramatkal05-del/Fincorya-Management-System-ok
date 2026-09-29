@@ -11,9 +11,12 @@ class ExpenseForm(forms.ModelForm):
         fields = ("category", "agent", "label", "amount", "currency", "incurred_on", "receipt")
         widgets = {"incurred_on": forms.DateInput(attrs={"type": "date"})}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["agent"].queryset = User.objects.filter(role=Role.AGENT, is_active=True).order_by("first_name", "email")
+        if user is not None and user.role == Role.AGENT:
+            self.instance.agent = user
+            del self.fields["agent"]
 
     def clean_receipt(self):
         receipt = self.cleaned_data.get("receipt")

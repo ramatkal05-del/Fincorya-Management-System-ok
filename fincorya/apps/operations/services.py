@@ -1,7 +1,7 @@
 """
 FINCORYA transactional operation services. Business guarantees:
-  - fee is looked up from the tariff tier matching (zone/schedule, amount)
-  - a manual fee may only reduce the automatic fee, never raise it
+  - new agent entries use an explicit commission in the cash account currency
+  - explicit legacy tariff calls retain their historical pricing convention
   - amount/fee are also stored converted to USD (system reference currency)
   - a withdrawal is refused if the cash account can't cover it
   - every operation is mirrored by exactly one cash movement while it is
@@ -75,6 +75,28 @@ def _pricing(*, account, entered_amount: Decimal, tariff_schedule, manual_fee,
              operation_type: str | None = None):
     rate = current_rate_to_usd(account.currency)
     entered_usd = (entered_amount * rate).quantize(Decimal("0.01"))
+    if tariff_schedule is None:
+        # No USD round trip: preserve the exact commission entered in local currency.
+        if manual_fee is None:
+            raise ValidationError(_("Saisissez les frais de commission, même s’ils sont nuls."))
+        fee = Decimal(manual_fee)
+        if not fee.is_finite() or fee < 0 or fee >= Decimal("1e10") or fee != fee.quantize(Decimal("0.01")):
+            raise ValidationError(_("Les frais doivent être positifs ou nuls, avec deux décimales au maximum."))
+        if fee_mode not in FeeMode.values:
+            raise ValidationError(_("Choisissez un mode de frais valide."))
+        base_amount = entered_amount
+        if fee_mode == FeeMode.DEDUCTED:
+            if operation_type in {OperationType.SENT_TRANSFER, OperationType.WITHDRAWAL} and fee >= entered_amount:
+                raise ValidationError(_("Les frais déduits doivent être inférieurs au montant saisi."))
+            if operation_type == OperationType.SENT_TRANSFER:
+                base_amount -= fee
+            elif operation_type == OperationType.RECEIVED_TRANSFER:
+                base_amount += fee
+        fee_usd = (fee * rate).quantize(Decimal("0.01"))
+        return {"rate": rate, "base_amount": base_amount,
+                "base_amount_usd": (base_amount * rate).quantize(Decimal("0.01")),
+                "fee": fee, "fee_usd": fee_usd,
+                "fee_auto": fee, "fee_auto_usd": fee_usd}
     if tariff_schedule.currency.code != "USD":
         raise ValidationError(_("La grille tarifaire de référence doit être exprimée en USD."))
 
@@ -442,13 +464,13 @@ def revise_operation(*, operation_id: int, changes: dict, reason: str, revised_b
     if new_amount <= 0 or new_fee < 0:
         raise ValidationError(_("Le montant doit être positif et les frais non négatifs."))
     new_amount_usd = (new_amount * operation.rate_to_usd).quantize(Decimal("0.01"))
-    if new_amount_usd > Decimal("5000.00") and revised_by.role != Role.ADMIN:
+    if operation.tariff_schedule_id and new_amount_usd > Decimal("5000.00") and revised_by.role != Role.ADMIN:
         raise ValidationError(_("Seul un administrateur peut corriger une opération supérieure à 5 000 USD."))
-    auto_fee_usd = lookup_fee(operation.tariff_schedule, new_amount_usd)
+    auto_fee_usd = lookup_fee(operation.tariff_schedule, new_amount_usd) if operation.tariff_schedule_id else None
     new_fee_usd = (new_fee * operation.rate_to_usd).quantize(Decimal("0.01"))
-    if new_amount_usd <= Decimal("5000.00") and new_fee_usd > auto_fee_usd:
+    if auto_fee_usd is not None and new_amount_usd <= Decimal("5000.00") and new_fee_usd > auto_fee_usd:
         raise ValidationError(_("Les frais corrigés ne peuvent pas dépasser les frais automatiques."))
-    new_fee_auto = (auto_fee_usd / operation.rate_to_usd).quantize(Decimal("0.01"))
+    new_fee_auto = (auto_fee_usd / operation.rate_to_usd).quantize(Decimal("0.01")) if auto_fee_usd is not None else new_fee
 
     before = {"amount": str(operation.amount), "fee": str(operation.fee), "note": operation.note}
     original = operation.movements.filter(movement_type=MovementType.OPERATION).first()
@@ -456,7 +478,14 @@ def revise_operation(*, operation_id: int, changes: dict, reason: str, revised_b
         if original is None:
             raise ValidationError(_("L'écriture de caisse d'origine est introuvable ; correction bloquée."))
         old_signed = original.amount if original.direction == MovementDirection.IN else -original.amount
-        new_impact = new_amount + new_fee if operation.type == OperationType.SENT_TRANSFER else new_amount - new_fee
+        if operation.type == OperationType.SENT_TRANSFER:
+            new_impact = new_amount + new_fee - operation.supplier_fee
+        elif operation.type == OperationType.WITHDRAWAL:
+            new_impact = new_amount + operation.supplier_fee
+            if operation.fee_mode == FeeMode.DEDUCTED:
+                new_impact -= new_fee
+        else:
+            new_impact = new_amount - new_fee
         if new_impact <= 0:
             raise ValidationError(_("L'impact de caisse corrigé doit être positif."))
         new_signed = new_impact if operation.type == OperationType.SENT_TRANSFER else -new_impact

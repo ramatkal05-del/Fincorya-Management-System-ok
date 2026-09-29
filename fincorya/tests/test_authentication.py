@@ -152,14 +152,15 @@ class ProtectedWorkflowViewTests(TestCase):
             "customer_identifier": "+243555555",
             "customer_name": "Rauf Ramat",
             "amount": "50.00",
+            "manual_fee": "8.00",
         })
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "8,00")
         self.assertContains(response, "USD")
 
-    def test_agent_cannot_open_expense_register(self):
+    def test_agent_can_open_own_expense_register(self):
         self.verified_login(self.agent)
-        self.assertEqual(self.client.get(reverse("expenses:list")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("expenses:list")).status_code, 200)
 
     def test_accountant_can_create_and_view_expense(self):
         self.verified_login(self.admin)

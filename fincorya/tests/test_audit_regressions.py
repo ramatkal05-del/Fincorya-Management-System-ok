@@ -111,7 +111,7 @@ class RequestRegressionTests(TestCase):
         for amount in ["NaN", "sNaN", "Infinity", "-Infinity", "1e999999"]:
             with self.subTest(amount=amount):
                 response = self.client.get(reverse("operations:preview"), {
-                    "account": self.account.pk, "tariff_schedule": self.schedule.pk, "amount": amount,
+                    "account": self.account.pk, "manual_fee": "5", "amount": amount,
                 })
                 self.assertEqual(response.status_code, 422)
 

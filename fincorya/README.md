@@ -28,7 +28,7 @@ linéaires cohérentes, des états accessibles et une navigation adaptée au rô
 | `pricing` | devises, taux versionnés et grilles tarifaires |
 | `cash` | caisses multidevises allouées aux agents et mouvements immuables |
 | `operations` | transferts, retraits, paiements et corrections |
-| `expenses` | dépenses, charges et salaires saisis par l'administrateur |
+| `expenses` | dépenses et charges des agents, salaires et validation par l'administrateur |
 | `stakeholders` | partenaires, investisseurs et actionnaires |
 | `profits` | bénéfice net, allocations 60/20/20 et distributions |
 | `contracts` | contrats privés et versions de documents |
@@ -96,13 +96,13 @@ les sauvegardes du disque privé et réalisez une validation métier/UAT signée
 
 ## Règles financières du PRD
 
-- Les tranches tarifaires sont choisies après conversion du montant en USD.
+- Les agents saisissent les frais de commission dans la devise de leur caisse ; ce champ est obligatoire, y compris pour des frais nuls. La saisie ne dépend pas d'une grille tarifaire.
 - Un transfert envoyé crédite la caisse du montant augmenté des frais.
-- Un retrait payé débite le montant diminué des frais, une seule fois.
-- Au-delà de 5 000 USD, les frais et leur justification exigent un administrateur.
+- Un retrait payé débite le montant saisi en mode « frais ajoutés », ou le montant diminué des frais en mode « frais déduits », une seule fois.
+- Les appels historiques qui transmettent explicitement une grille tarifaire conservent leurs règles de calcul ; les nouvelles saisies utilisent la commission indiquée par l'agent.
 - Une caisse doit être allouée et activée par l'administrateur avant toute opération.
 - Toute variation de la caisse globale produit une écriture immuable avec solde avant/après et justification.
-- Le bénéfice déduit les dépenses, charges et salaires effectivement saisis et validés par l'administrateur.
+- Les agents saisissent et consultent uniquement leurs propres charges et justificatifs. L'administrateur conserve la validation ; seules les charges approuvées sont reconnues dans la comptabilité.
 - Les enveloppes 60/20/20 et les parts individuelles sont calculées depuis un instantané.
 - La part FINCORYA sur les commissions partenaires est de 40 %.
 - Les rapports PDF, XLSX et CSV utilisent exactement le même jeu de données et les mêmes totaux.

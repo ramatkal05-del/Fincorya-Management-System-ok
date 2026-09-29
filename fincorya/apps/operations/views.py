@@ -10,8 +10,6 @@ from django.views.decorators.http import require_POST
 from apps.accounts.models import Role
 from apps.accounts.views import mfa_required
 from apps.cash.models import CashAccount
-from apps.pricing.models import TariffSchedule
-from apps.pricing.services import current_rate_to_usd, from_usd, lookup_fee
 from .forms import (OperationCancellationForm, OperationFilterForm, OperationForm, OperationPurgeForm,
                     OperationRevisionForm, TransactionServiceOptionForm)
 from .models import Operation, OperationStatus, OperationType, TransactionServiceOption
@@ -70,7 +68,7 @@ def operation_create(request):
             try:
                 operation = service(
                     agent=request.user, account_id=data["account"].pk, amount=data["amount"],
-                    tariff_schedule=data["tariff_schedule"], manual_fee=None,
+                    tariff_schedule=None, manual_fee=data["manual_fee"],
                     fee_justification="", note=data["note"],
                     idempotency_key=data["idempotency_key"],
                     service=data["service"], customer_identifier=data["customer_identifier"],
@@ -91,21 +89,18 @@ def operation_create(request):
 def operation_preview(request):
     try:
         account = CashAccount.objects.select_related("currency", "agent").get(pk=request.GET.get("account"))
-        from apps.pricing.services import active_tariff_schedule
-        from .services import _pricing
-        schedule = active_tariff_schedule()
+        from .services import _assert_account_access, _pricing
+        manual_fee = OperationForm.base_fields["manual_fee"].clean(request.GET.get("manual_fee"))
         amount = Decimal(request.GET.get("amount", "0"))
         if not amount.is_finite() or amount <= 0 or amount >= Decimal("1e14"):
             raise ValueError
         # Object authorization is enforced before any financial information is disclosed.
-        allowed = account.agent_id == request.user.pk if request.user.role == Role.AGENT else request.user.role == Role.ADMIN
-        if not allowed:
-            raise PermissionDenied
+        _assert_account_access(request.user, account)
         op_type = request.GET.get("type", OperationType.SENT_TRANSFER)
         fee_mode = request.GET.get("fee_mode", "ADDED")
         pricing = _pricing(
-            account=account, entered_amount=amount, tariff_schedule=schedule,
-            manual_fee=None, actor=request.user, fee_justification="",
+            account=account, entered_amount=amount, tariff_schedule=None,
+            manual_fee=manual_fee, actor=request.user, fee_justification="",
             fee_mode=fee_mode, operation_type=op_type,
         )
         if op_type == OperationType.WITHDRAWAL:
@@ -133,8 +128,8 @@ def operation_preview(request):
             "net": net,
         }
         return render(request, "operations/_preview.html", context)
-    except (CashAccount.DoesNotExist, TariffSchedule.DoesNotExist, InvalidOperation, ValueError, ValidationError, PermissionDenied) as exc:
-        message = "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Complétez le montant, la caisse et la grille pour afficher l'impact."
+    except (CashAccount.DoesNotExist, InvalidOperation, ValueError, ValidationError, PermissionDenied) as exc:
+        message = "; ".join(exc.messages) if isinstance(exc, ValidationError) else "Complétez la caisse, le montant et les frais de commission pour afficher l'impact."
         return HttpResponse(message, status=422)
 
 

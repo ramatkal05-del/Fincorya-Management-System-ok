@@ -14,7 +14,7 @@ from .models import Expense, ExpenseStatus
 from .services import decide_expense
 
 
-ALLOWED_ROLES = {Role.ADMIN}
+ALLOWED_ROLES = {Role.ADMIN, Role.AGENT}
 
 
 def _ensure_access(user):
@@ -22,18 +22,25 @@ def _ensure_access(user):
         raise PermissionDenied("Accès réservé au contrôle financier.")
 
 
+def _expenses_for(user):
+    _ensure_access(user)
+    rows = Expense.objects.select_related("currency", "created_by", "agent")
+    if user.role == Role.AGENT:
+        rows = rows.filter(agent=user)
+    return rows
+
+
 @mfa_required
 def expense_list(request):
     _ensure_access(request.user)
-    rows = Expense.objects.select_related("currency", "created_by", "agent").prefetch_related("approvals")
+    rows = _expenses_for(request.user).prefetch_related("approvals")
     return render(request, "expenses/list.html", {"expenses": rows})
 
 
 @mfa_required
 def expense_create(request):
-    if request.user.role != Role.ADMIN:
-        raise PermissionDenied("Vous ne pouvez pas enregistrer une charge.")
-    form = ExpenseForm(request.POST or None, request.FILES or None)
+    _ensure_access(request.user)
+    form = ExpenseForm(request.POST or None, request.FILES or None, user=request.user)
     if request.method == "POST" and form.is_valid():
         expense = form.save(commit=False)
         expense.created_by = request.user
@@ -49,14 +56,15 @@ def expense_create(request):
 @mfa_required
 def expense_detail(request, expense_id):
     _ensure_access(request.user)
-    expense = get_object_or_404(Expense.objects.select_related("currency", "created_by", "agent").prefetch_related("approvals__decided_by"), pk=expense_id)
+    expense = get_object_or_404(_expenses_for(request.user).prefetch_related("approvals__decided_by"), pk=expense_id)
     return render(request, "expenses/detail.html", {"expense": expense, "decision_form": ExpenseDecisionForm()})
 
 
 @require_POST
 @mfa_required
 def expense_decide(request, expense_id):
-    _ensure_access(request.user)
+    if request.user.role != Role.ADMIN:
+        raise PermissionDenied("Seul un administrateur peut valider une charge.")
     form = ExpenseDecisionForm(request.POST)
     if form.is_valid():
         try:
@@ -73,7 +81,7 @@ def expense_decide(request, expense_id):
 @mfa_required
 def receipt_download(request, expense_id):
     _ensure_access(request.user)
-    expense = get_object_or_404(Expense, pk=expense_id)
+    expense = get_object_or_404(_expenses_for(request.user), pk=expense_id)
     if not expense.receipt:
         raise Http404("Aucun justificatif.")
     try:

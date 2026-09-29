@@ -3,7 +3,6 @@ import uuid
 from django import forms
 from apps.accounts.models import Role
 from apps.cash.models import CashAccount
-from apps.pricing.models import TariffSchedule
 from .models import FeeMode, OperationType, TransactionService, TransactionServiceOption
 
 
@@ -23,8 +22,8 @@ class TransactionServiceOptionForm(forms.ModelForm):
 
 class OperationForm(forms.Form):
     field_order = ["type", "account", "service", "fee_mode", "customer_identifier", "customer_name",
-                   "amount", "stakeholder", "commission_owner_confirmed", "note",
-                   "tariff_schedule", "idempotency_key"]
+                   "amount", "manual_fee", "stakeholder", "commission_owner_confirmed", "note",
+                   "idempotency_key"]
     fee_mode = forms.ChoiceField(
         label="Mode de frais",
         choices=FeeMode.choices,
@@ -65,6 +64,11 @@ class OperationForm(forms.Form):
         label="Montant de l'opération", min_value=0.01, max_digits=16, decimal_places=2,
         widget=forms.NumberInput(attrs={"step": "0.01", "inputmode": "decimal", "placeholder": "0,00"}),
     )
+    manual_fee = forms.DecimalField(
+        label="Frais de commission", min_value=0, max_digits=12, decimal_places=2,
+        help_text="Saisissez les frais dans la devise de la caisse sélectionnée. Saisissez 0 si aucun frais ne s’applique.",
+        widget=forms.NumberInput(attrs={"step": "0.01", "inputmode": "decimal", "placeholder": "0,00"}),
+    )
     note = forms.CharField(label="Note", required=False, widget=forms.Textarea(attrs={"rows": 3}))
     idempotency_key = forms.CharField(widget=forms.HiddenInput)
 
@@ -81,17 +85,8 @@ class OperationForm(forms.Form):
         self.fields["account"].queryset = accounts
         self.initial.setdefault("idempotency_key", uuid.uuid4().hex)
 
-    def clean_tariff_schedule(self):
-        """Apply the official active schedule; tariff selection is automatic."""
-        from apps.pricing.services import active_tariff_schedule
-        return active_tariff_schedule()
-
     def clean(self):
         cleaned = super().clean()
-        try:
-            cleaned["tariff_schedule"] = self.clean_tariff_schedule()
-        except forms.ValidationError as exc:
-            self.add_error(None, exc)
         identifier = (cleaned.get("customer_identifier") or "").strip()
         if cleaned.get("service") == TransactionService.PAYPAL:
             try:

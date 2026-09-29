@@ -27,6 +27,10 @@ class Links(HTMLParser):
                    MFA_ENABLED=False, SECURE_SSL_REDIRECT=False)
 class InterfaceRegressionTests(FinanceScenario, TestCase):
     def test_rendered_navigation_for_every_role(self):
+        # The changelist initializes this singleton on first access. Initialize
+        # it before crawling so an earlier, now-stale add link is not queued.
+        from apps.notifications.models import NotificationSettings
+        NotificationSettings.load()
         self.admin.is_staff = self.admin.is_superuser = True
         self.admin.save()
         self.operation()
@@ -69,14 +73,15 @@ class InterfaceRegressionTests(FinanceScenario, TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertFalse(TariffSchedule.objects.filter(name=data["name"]).exists())
 
-    def test_operation_preview_and_save_select_tariff_automatically(self):
+    def test_operation_preview_and_save_use_entered_commission(self):
         self.client.force_login(self.agent)
-        response = self.client.get(reverse("operations:preview"), {"account": self.legacy.pk, "amount": "1000"})
+        response = self.client.get(reverse("operations:preview"), {"account": self.legacy.pk, "amount": "1000", "manual_fee": "125"})
         self.assertEqual(response.status_code, 200)
         response = self.client.post(reverse("operations:create"), {
             "type": "SENT_TRANSFER", "account": self.legacy.pk, "service": "AIRTEL_MONEY",
             "customer_identifier": "+243123456789", "customer_name": "Client test", "amount": "1000",
-            "commission_owner_confirmed": "on", "idempotency_key": "interface-auto-tariff"}, follow=True)
+            "fee_mode": "ADDED", "manual_fee": "125", "commission_owner_confirmed": "on", "idempotency_key": "interface-manual-fee"}, follow=True)
         self.assertEqual(response.status_code, 200)
         operation = Operation.objects.get(customer_name="Client test")
-        self.assertEqual(operation.fee, 100)
+        self.assertEqual(operation.fee, 125)
+        self.assertIsNone(operation.tariff_schedule_id)
