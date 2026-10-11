@@ -51,10 +51,16 @@ class OctoberRestartTests(TestCase):
             self.run_command(apply=True)
         self.assertFalse(CashMovement.objects.exists())
 
-    def test_unique_names_resolve_without_ids(self):
-        names = {'victoria': ('Victoria', ''), 'david': ('David', 'Matamba'),
-                 'chris': ('Chris', 'Kapia'), 'grace': ('Grace', 'Tubadi')}
-        for name, (first, last) in names.items():
-            User.objects.filter(pk=self.options[name]).update(first_name=first, last_name=last)
+    def test_real_emails_resolve_without_ids(self):
+        from apps.finance.management.commands.prepare_october_restart import EMAILS
+        for name, email in EMAILS.items():
+            User.objects.filter(pk=self.options[name]).update(email=email)
         call_command('prepare_october_restart', admin=self.admin.email, stdout=StringIO())
+        self.assertFalse(CashMovement.objects.exists())
+
+    def test_unknown_email_blocks_all_changes(self):
+        User.objects.filter(pk=self.options['victoria']).update(email='someone-else@example.test')
+        del self.options['victoria']
+        with self.assertRaises(CommandError):
+            self.run_command(apply=True)
         self.assertFalse(CashMovement.objects.exists())

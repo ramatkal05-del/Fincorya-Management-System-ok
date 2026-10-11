@@ -12,6 +12,11 @@ from apps.finance.locking import ledger_atomic
 KEY = 'OCTOBER-2026-01-11-RESTART-V1'
 START, END = date(2026, 10, 1), date(2026, 10, 11)
 TARGETS = {'victoria': '3096.00', 'david': '2444.00', 'chris': '1428.00', 'grace': '1025.00'}
+# Comptes confirmés sur Render (apps/accounts) ; l'e-mail est la clé fiable,
+# les anciens mots-clés de nom (« victoria », « chris ») ne correspondaient pas
+# à « Victorine » et « Christ » et échouaient silencieusement en ambiguïté.
+EMAILS = {'victoria': 'thondavictorine@gmail.com', 'david': 'nsukudav@gmail.com',
+          'chris': 'christkapia1@gmail.com', 'grace': 'tubadigrace6@gmail.com'}
 
 
 class Command(BaseCommand):
@@ -43,15 +48,12 @@ class Command(BaseCommand):
         admin = User.objects.filter(email__iexact=options['admin'], role='ADMIN', is_active=True).first()
         if admin is None:
             raise CommandError('Administrateur actif introuvable.')
-        names = {'victoria': ('victoria',), 'david': ('david', 'matamba'),
-                 'chris': ('chris', 'kapia'), 'grace': ('grace', 'tubadi')}
-        for name, required_words in names.items():
+        for name, email in EMAILS.items():
             if options[name] is None:
-                candidates = [u.pk for u in User.objects.filter(role='AGENT', is_active=True)
-                    if set(required_words).issubset(set(u.get_full_name().casefold().split()))]
-                if len(candidates) != 1:
-                    raise CommandError(f'{name}: nom absent ou ambigu. Fournir --{name} ID_UTILISATEUR exact.')
-                options[name] = candidates[0]
+                agent = User.objects.filter(email__iexact=email, role='AGENT', is_active=True).first()
+                if agent is None:
+                    raise CommandError(f'{name}: aucun agent actif avec l’e-mail {email}. Fournir --{name} ID_UTILISATEUR exact.')
+                options[name] = agent.pk
         ids = [options[name] for name in TARGETS]
         if len(set(ids)) != 4:
             raise CommandError('Les quatre agents doivent être distincts.')
