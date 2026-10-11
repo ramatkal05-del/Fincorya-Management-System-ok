@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>FINCORYA — Référence visuelle</title><link rel="stylesheet" href="design-tokens.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:var(--audit-background);color:var(--audit-text);font:16px/1.6 var(--audit-font-body)}header{background:var(--audit-navigation);color:white;padding:32px}main{max-width:1040px;margin:auto;padding:24px}h1,h2{line-height:1.2;font-family:var(--audit-font-heading)}h1{font-size:clamp(28px,5vw,44px)}section{margin:32px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:16px}.panel{background:white;border:1px solid var(--audit-border);border-radius:8px;padding:24px}.swatch{height:64px;border:1px solid var(--audit-border);border-radius:8px}.badge{display:inline-block;padding:4px 10px;border-radius:6px}.success{color:var(--audit-success-text);background:var(--audit-success-bg)}.pending{color:var(--audit-pending-text);background:var(--audit-pending-bg)}.info{color:var(--audit-info-text);background:var(--audit-info-bg)}.error{color:var(--audit-error-text);background:var(--audit-error-bg)}a{color:var(--audit-primary)}label{display:block;margin-top:16px;font-weight:600}input,textarea,button{font:inherit;min-height:44px;border:1px solid var(--audit-field-border);border-radius:8px;padding:10px}input,textarea{display:block;width:100%;max-width:540px}button{cursor:pointer;background:white;color:var(--audit-navigation);margin:16px 8px 8px 0}button.primary{background:var(--audit-primary);color:white}button:disabled{opacity:.6;cursor:not-allowed}:focus-visible{outline:3px solid var(--audit-primary);outline-offset:3px}.muted{color:var(--audit-muted)}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:450px}th,td{text-align:left;padding:12px;border-bottom:1px solid var(--audit-border)}td{text-align:right;font-variant-numeric:tabular-nums}caption{text-align:left;font-weight:600}#feedback{min-height:3em}.skip{position:absolute;top:-100px;background:white;padding:12px}.skip:focus{top:8px}@media(max-width:560px){main,.panel{padding:16px}}
+</style></head><body><a class="skip" href="#contenu">Aller au contenu</a>
+<header><p>FINCORYA / DOSSIER D’AUDIT</p><h1>Des états clairs.<br>Des mouvements traçables.</h1><p>Référence documentaire · Valeurs fictives · Aucune opération enregistrée</p></header>
+<main id="contenu"><nav aria-label="Sections"><a href="#palette">Palette</a> · <a href="#statuts">Statuts</a> · <a href="#simulation">Simulation</a> · <a href="DESIGN-SYSTEM.md">Guide complet</a></nav>
+<section id="palette"><h2>01 / Identité existante</h2><div class="grid">
+<article class="panel"><div class="swatch" style="background:var(--audit-primary)"></div><h3>Émeraude</h3><code>#006B4F</code></article>
+<article class="panel"><div class="swatch" style="background:var(--audit-navigation)"></div><h3>Vert profond</h3><code>#013B36</code></article>
+<article class="panel"><div class="swatch" style="background:var(--audit-accent)"></div><h3>Or décoratif</h3><code>#C9A227</code></article>
+<article class="panel"><div class="swatch" style="background:var(--audit-background)"></div><h3>Ivoire</h3><code>#F7F8F5</code></article></div></section>
+<section id="statuts"><h2>02 / Un statut, un objet</h2><div class="grid"><article class="panel"><span class="badge success">Charge approuvée</span><p>Charge reconnue ; paiement distinct.</p></article><article class="panel"><span class="badge info">Transfert reçu</span><p>Fonds en transit jusqu’à confirmation administrative.</p></article><article class="panel"><span class="badge pending">Clôture à examiner</span><p>Caisse verrouillée ; solde inchangé.</p></article><article class="panel"><span class="badge error">Export échoué</span><p>Fichier indisponible ; échec à examiner.</p></article></div><h3>Exemple d’état vide</h3><p>Aucune déclaration pour cette période. Aucun total déclaré ne peut être présenté.</p><a href="APP-FLOW.md">Consulter les parcours</a></section>
+<section id="simulation"><h2>03 / Clôture de caisse — FLOW-04</h2><p>Solde théorique fictif : 1 000,00 USD. La correction suppose que ce solde n’a pas changé depuis le comptage ; le serveur doit vérifier cette condition dans l’application.</p><div class="panel"><noscript>JavaScript est nécessaire pour la simulation. Le guide décrit le même parcours.</noscript>
+<form id="form"><label for="count">Montant compté (USD)</label><input id="count" type="number" value="1000.00" min="0" max="1000000" step="0.01" required><label for="reason">Justification du comptage</label><textarea id="reason" maxlength="500" aria-describedby="help feedback"></textarea><small id="help">Obligatoire en cas d’écart.</small><button id="submit" class="primary">Simuler le comptage</button><button id="reset" type="button">Réinitialiser</button></form>
+<p id="feedback" role="status" aria-live="polite">OPEN — Caisse ouverte (simulation).</p>
+<div id="review" hidden><label for="admin">Justification administrative</label><textarea id="admin" maxlength="500" aria-describedby="feedback"></textarea><button id="approve" class="primary" type="button">Simuler la correction admin</button></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Résultats fictifs, tableau défilant"><table><caption>Résultats fictifs en USD</caption><tbody><tr><th scope="row">Théorique initial</th><td>1 000,00</td></tr><tr><th scope="row">Comptage déclaré</th><td id="declared">—</td></tr><tr><th scope="row">Écart initial conservé</th><td id="gap">—</td></tr><tr><th scope="row">Solde après l’étape simulée</th><td id="balance">1 000,00</td></tr></tbody></table></div></div></section>
+<footer>11 octobre 2026 · <a href="README.md">Dossier d’audit</a> · <a href="design-tokens.json">Tokens JSON</a></footer></main>
+<script>
+'use strict';
+const el = id => document.getElementById(id);
+const money = cents => new Intl.NumberFormat('fr-FR', {minimumFractionDigits:2,maximumFractionDigits:2}).format(cents/100);
+let state = 'OPEN', counted = null;
+function announce(message, type) { el('feedback').textContent = message; el('feedback').className = 'badge ' + type; }
+function justified(id, message) { if (el(id).value.trim()) { el(id).removeAttribute('aria-invalid'); return true; } el(id).setAttribute('aria-invalid','true'); announce(message,'error'); el(id).focus(); return false; }
+el('form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (state !== 'OPEN' || !el('form').reportValidity()) return;
+  const value = Number(el('count').value);
+  if (!Number.isFinite(value)) return;
+  const cents = Math.round(value*100);
+  if (cents !== 100000 && !justified('reason','Justifiez l’écart avant de continuer.')) return;
+  el('reason').removeAttribute('aria-invalid');
+  counted = cents; state = cents === 100000 ? 'CLOSED' : 'REVIEW';
+  el('declared').textContent = money(cents); el('gap').textContent = money(cents-100000);
+  for (const id of ['count','reason','submit']) el(id).disabled = true;
+  el('review').hidden = state !== 'REVIEW';
+  announce(state === 'REVIEW' ? 'REVIEW — Caisse verrouillée ; solde inchangé (simulation).' : 'CLOSED — Comptage conforme ; ouverture suivante préparée (simulation).',state === 'REVIEW' ? 'pending' : 'success');
+});
+el('approve').addEventListener('click', () => {
+  if (state !== 'REVIEW' || !justified('admin','Justifiez la correction administrative.')) return;
+  state = 'CLOSED'; el('balance').textContent = money(counted); el('review').hidden = true;
+  announce('CLOSED — Correction simulée ; écart initial conservé ; caisse déverrouillée.','success'); el('reset').focus();
+});
+el('reset').addEventListener('click', () => {
+  state = 'OPEN'; counted = null; el('form').reset();
+  for (const id of ['count','reason','submit']) el(id).disabled = false;
+  for (const id of ['reason','admin']) el(id).removeAttribute('aria-invalid');
+  el('admin').value = ''; el('review').hidden = true;
+  el('declared').textContent = '—'; el('gap').textContent = '—'; el('balance').textContent = money(100000);
+  announce('OPEN — Caisse ouverte (simulation).','info'); el('count').focus();
+});
+</script></body></html>

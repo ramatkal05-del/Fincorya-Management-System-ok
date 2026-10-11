@@ -1,0 +1,32 @@
+/* Documentary reference; not loaded by the application. */
+:root {
+  --audit-primary: #006b4f;
+  --audit-navigation: #013b36;
+  --audit-accent: #c9a227;
+  --audit-background: #f7f8f5;
+  --audit-surface: #ffffff;
+  --audit-text: #18201f;
+  --audit-muted: #5f6b67;
+  --audit-border: #dce3df;
+  --audit-field-border: #5f6b67;
+  --audit-danger: #c0392b;
+  --audit-success-text: #116c4e;
+  --audit-success-bg: #e7f6ef;
+  --audit-pending-text: #825814;
+  --audit-pending-bg: #fff5df;
+  --audit-error-text: #9c3027;
+  --audit-error-bg: #fcecea;
+  --audit-info-text: #1e5f8f;
+  --audit-info-bg: #e8f1fb;
+  --audit-space-1: 4px;
+  --audit-space-2: 8px;
+  --audit-space-3: 12px;
+  --audit-space-4: 16px;
+  --audit-space-6: 24px;
+  --audit-space-8: 32px;
+  --audit-radius: 8px;
+  --audit-control-height: 44px;
+  --audit-font-body: Inter, system-ui, sans-serif;
+  --audit-font-heading: "Space Grotesk", Inter, system-ui, sans-serif;
+  --audit-font-reference: "JetBrains Mono", ui-monospace, monospace;
+}
