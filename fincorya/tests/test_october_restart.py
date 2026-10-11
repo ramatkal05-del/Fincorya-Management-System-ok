@@ -1,12 +1,14 @@
 from io import StringIO
-from datetime import date
+from datetime import date, datetime, timezone as dt_timezone
 from django.test import TestCase, override_settings
 from django.core.management import call_command, CommandError
 from apps.accounts.models import User
 from apps.pricing.models import Currency
 from apps.cash.models import CashAccount, CashMovement
+from apps.cash.services import apply_movement
 from apps.expenses.models import Expense
 from apps.finance.models import ImportRow, FinancialPeriod
+from apps.operations.models import Operation
 
 
 @override_settings(FINANCE_LEDGER_ENABLED=False, RUN_INLINE_NOTIFICATION_WORKER=False)
@@ -57,6 +59,26 @@ class OctoberRestartTests(TestCase):
             User.objects.filter(pk=self.options[name]).update(email=email)
         call_command('prepare_october_restart', admin=self.admin.email, stdout=StringIO())
         self.assertFalse(CashMovement.objects.exists())
+
+    def test_existing_real_operations_do_not_block_and_are_reported(self):
+        grace = User.objects.get(pk=self.options['grace'])
+        account = CashAccount.objects.get(agent=grace, currency=self.usd)
+        apply_movement(account=account, direction='IN', amount=10, movement_type='OPERATION',
+            actor=self.admin, note='commission réelle avant reprise')
+        operation = Operation.objects.create(agent=grace, account=account, currency=self.usd,
+            type='SENT_TRANSFER', status='COMPLETED', amount=100, fee=10, fee_auto=10,
+            rate_to_usd=1, amount_usd=100, fee_usd=10)
+        Operation.objects.filter(pk=operation.pk).update(
+            created_at=datetime(2026, 10, 5, 12, 0, tzinfo=dt_timezone.utc))
+        out = StringIO()
+        call_command('prepare_october_restart', stdout=out, **self.options)
+        self.assertFalse(CashMovement.objects.filter(movement_type='ADJUSTMENT').exists())
+        report = out.getvalue()
+        self.assertIn('existing_operations_in_window', report)
+        self.assertIn('grace@example.test', report)
+        self.run_command(apply=True)
+        account.refresh_from_db()
+        self.assertEqual(account.balance, 1025)  # grace target, even though 10 was already credited
 
     def test_unknown_email_blocks_all_changes(self):
         User.objects.filter(pk=self.options['victoria']).update(email='someone-else@example.test')

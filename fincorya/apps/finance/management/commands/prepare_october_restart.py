@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Count, Sum
 from django.utils import timezone
 
 from apps.finance.locking import ledger_atomic
@@ -66,9 +67,15 @@ class Command(BaseCommand):
             return
         usd = Currency.objects.get(code='USD')
         lower, upper = business_day_bounds(START, END)
-        # Existing operations require a deliberate migration, never silent deletion or replay.
-        if Operation.objects.filter(created_at__gte=lower, created_at__lt=upper).exists():
-            raise CommandError('Des opérations existent du 1 au 11 octobre. Reprise refusée pour éviter une double saisie ; aucune suppression.')
+        # Opérations réelles de l'application pendant la préparation de la reprise :
+        # elles restent dans le grand livre (jamais supprimées ni réimportées) et sont
+        # déjà reflétées dans le solde actuel de chaque caisse ; l'ajustement ci-dessous
+        # part de ce solde réel, il ne le remplace pas. Ce rapport les rend visibles,
+        # il ne bloque plus une activité normale pendant la préparation.
+        existing_ops = Operation.objects.filter(created_at__gte=lower, created_at__lt=upper, currency=usd)
+        existing_operations_in_window = list(existing_ops.values('agent__email', 'status')
+            .annotate(count=Count('id'), amount=Sum('amount'), fee=Sum('fee'))
+            .order_by('agent__email', 'status'))
         if Expense.objects.filter(incurred_on__range=(START, END), currency=usd).exists():
             raise CommandError('Des charges USD existent déjà dans cette période. Rapprocher les 141 USD avant reprise.')
         if FinancialPeriod.objects.filter(status='LOCKED', start_date__lte=END, end_date__gte=START).exists():
@@ -107,7 +114,10 @@ class Command(BaseCommand):
             expense_payment='Charges reconnues, paiement non enregistré : compte payeur non identifié. Aucun débit des quatre caisses.',
             contributions=list(FundContribution.objects.filter(currency=usd).values('stakeholder__name', 'origin', 'amount')),
             stakeholder_policy='Apports historiques conservés : le capital existant ne constitue pas un nouveau versement.',
-            effective_cash_time=str(timezone.now()), operations_imported=0)
+            effective_cash_time=str(timezone.now()), operations_imported=0,
+            existing_operations_in_window=existing_operations_in_window,
+            existing_operations_note='Opérations réelles déjà enregistrées par l’application du 1 au 11 octobre. '
+                'Conservées telles quelles dans le grand livre ; les soldes avant/après ci-dessus en tiennent déjà compte.')
         if not options['apply']:
             self.stdout.write(json.dumps(report, ensure_ascii=False, indent=2, default=str))
             transaction.set_rollback(True)
@@ -134,13 +144,14 @@ class Command(BaseCommand):
                 amount=Decimal(amount), currency=usd, incurred_on=date(2026,10,4), created_by=admin)
             decide_expense(expense_id=expense.pk, actor=admin, decision='APPROVED',
                 comment='Déclaration utilisateur ; regroupement au 04/10 selon rapport. Aucun paiement agent recréé.')
+        gross_fees = existing_ops.filter(status='COMPLETED').aggregate(v=Sum('fee'))['v'] or Decimal('0.00')
         profit, _ = ProfitPeriod.objects.get_or_create(start_date=START, end_date=END, currency=usd,
             defaults={'finance_period': period, 'calculated_by': admin})
         profit.finance_period = period
-        profit.gross_fees = 0
+        profit.gross_fees = gross_fees
         profit.deductible_expenses = Decimal('141')
-        profit.net_profit = Decimal('-141')
-        profit.distributable = 0
+        profit.net_profit = gross_fees - Decimal('141')
+        profit.distributable = max(profit.net_profit, Decimal('0.00'))
         profit.save()
         payload = json.loads(json.dumps(report, default=str))
         row = ImportRow.objects.create(source_key=KEY, payload=payload, reviewed_by=admin,
