@@ -239,6 +239,7 @@ class CashHandover(models.Model):
 
 
 class ClosureStatus(models.TextChoices):
+    REVIEW = "REVIEW", _("écart à valider")
     OPEN = "OPEN", _("Ouverte")
     CLOSED = "CLOSED", _("Clôturée")
 

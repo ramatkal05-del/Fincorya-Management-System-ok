@@ -368,6 +368,7 @@ class FundOrigin(models.TextChoices):
 class FundContribution(models.Model):
     """One received contribution, recorded once, with its economic origin and its receiving account."""
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    legacy_investment = models.OneToOneField("stakeholders.Investment", on_delete=models.RESTRICT, null=True, blank=True, related_name="received_contribution")
     client_key = models.CharField(max_length=120, unique=True)
     origin = models.CharField(max_length=20, choices=FundOrigin.choices)
     stakeholder = models.ForeignKey("stakeholders.Stakeholder", on_delete=models.RESTRICT, related_name="contributions")

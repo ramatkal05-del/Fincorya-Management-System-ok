@@ -126,9 +126,7 @@ def _delta(account, start_at, end_at):
 
 # --------------------------------------------------------------------------- datasets
 
-def _activity(user, start_at, end_at, filters):
-    from apps.operations.models import Operation, OperationStatus
-    operations = Operation.objects.select_related("currency", "agent", "account").filter(created_at__gte=start_at, created_at__lt=end_at)
+def _filter_operations(operations, user, filters):
     if finance_policy(user).own_cash_only:
         operations = operations.filter(agent=user)
     if filters.get("agent"):
@@ -139,6 +137,13 @@ def _activity(user, start_at, end_at, filters):
         operations = operations.filter(status=filters["status"])
     if filters.get("country"):
         operations = operations.filter(account__financial_account__country_code=filters["country"])
+    return operations
+
+
+def _activity(user, start_at, end_at, filters):
+    from apps.operations.models import Operation, OperationStatus
+    operations = Operation.objects.select_related("currency", "agent", "account").filter(created_at__gte=start_at, created_at__lt=end_at)
+    operations = _filter_operations(operations, user, filters)
     ops_list = list(operations.order_by("created_at", "id"))
     row = lambda op: [timezone.localtime(op.created_at).strftime("%d/%m/%Y %H:%M"), str(op.reference)[:8].upper(), op.get_type_display(), op.get_service_display(),
                        op.get_status_display(), op.agent.get_full_name() or op.agent.email, op.currency.code, op.amount, op.fee, op.supplier_fee]
@@ -227,11 +232,18 @@ def _commissions(user, start_at, end_at, filters):
     from apps.operations.models import Operation
     from apps.stakeholders.models import PartnerOperation
     operations = Operation.objects.filter(status="COMPLETED", created_at__gte=start_at, created_at__lt=end_at).select_related("currency", "agent")
+    operations = _filter_operations(operations, user, filters)
     attributed = PartnerOperation.objects.filter(operation__in=operations).select_related("stakeholder", "operation__currency", "operation__agent")
     partner_ids = set(attributed.values_list("operation_id", flat=True))
     own = [[op.agent.get_full_name() or op.agent.email, op.get_service_display(), op.currency.code, op.fee] for op in operations.exclude(pk__in=partner_ids)]
-    partners = [[a.stakeholder.name, a.operation.agent.get_full_name() or a.operation.agent.email, a.operation.get_service_display(), a.operation.currency.code, a.operation.fee,
-                 a.share_percent, (a.operation.fee * a.share_percent / 100).quantize(Decimal("0.01")), a.operation.fee - (a.operation.fee * a.share_percent / 100).quantize(Decimal("0.01"))] for a in attributed]
+    from .calculations import partner_commissions
+    partners = []
+    for attribution in attributed:
+        split = partner_commissions([attribution])
+        op = attribution.operation
+        partners.append([attribution.stakeholder.name, op.agent.get_full_name() or op.agent.email,
+            op.get_service_display(), op.currency.code, split["partner_gross"], attribution.share_percent,
+            split["partner_share"], split["fincorya_share"]])
     return [
         _section("Commissions propres FINCORYA", ["Agent", "Service", "Devise", "Commission"], own, numeric=[3], totals=(2, [3])),
         _section("Commissions partenaires : brut, part partenaire, part FINCORYA", ["Partenaire", "Agent", "Service", "Devise", "Brut", "Part %", "Part partenaire", "Part FINCORYA"], partners,
@@ -259,7 +271,12 @@ def _investors(user, start_at, end_at, filters, party=None):
     rows, returns = [], []
     for investor in parties.order_by("name"):
         for account in FinancialAccount.objects.filter(economic_owner=investor, account_type=AccountType.INVESTOR_FUNDS).select_related("currency"):
-            rows.append([investor.name, account.currency.code, ledger_balance(account, before=end_at), investor.investor_return_percent, investor.get_payment_frequency_display()])
+            from .events import effective_rule
+            from config.business_time import business_date
+            from datetime import timedelta
+            rule = effective_rule(investor, "REMUNERATION", business_date(end_at - timedelta(microseconds=1)))
+            fixed = f"{rule.value} {rule.currency.code}" if rule and rule.currency_id else "Non configurée"
+            rows.append([investor.name, account.currency.code, ledger_balance(account, before=end_at), fixed, investor.get_payment_frequency_display()])
         for expense in Expense.objects.filter(stakeholder=investor, category="INVESTOR_RETURN", incurred_on__gte=start_at.date(), incurred_on__lt=end_at.date()).select_related("currency"):
             paid = expense.payments.aggregate(v=Sum("amount"))["v"] or ZERO
             returns.append([investor.name, expense.incurred_on.strftime("%d/%m/%Y"), expense.currency.code, expense.amount, paid, expense.get_status_display()])

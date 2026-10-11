@@ -350,12 +350,11 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
         partner_rows = partner_rows.filter(stakeholder=stakeholder)
         contributions_qs = contributions_qs.filter(stakeholder=stakeholder)
     distribution_rows = [{"party": row.stakeholder.name, "type": row.stakeholder.get_type_display(), "amount": str(row.amount), "currency": row.allocation.period.currency.code, "status": row.get_status_display()} for row in distributions]
-    frequency_divisor = {PaymentFrequency.MONTHLY: Decimal("12"), PaymentFrequency.QUARTERLY: Decimal("4"), PaymentFrequency.SEMIANNUAL: Decimal("2"), PaymentFrequency.ANNUAL: Decimal("1"), PaymentFrequency.AT_MATURITY: Decimal("1")}
-    investment_rows = []
-    for row in investments:
-        annual_return = (row.amount * row.stakeholder.investor_return_percent / Decimal("100")).quantize(Decimal("0.01"))
-        installment = (annual_return / frequency_divisor[row.stakeholder.payment_frequency]).quantize(Decimal("0.01"))
-        investment_rows.append({"party": row.stakeholder.name, "identifier": str(row.stakeholder.public_id), "amount": str(row.amount), "currency": row.currency.code, "date": str(row.invested_on), "return_percent": str(row.stakeholder.investor_return_percent), "frequency": row.stakeholder.get_payment_frequency_display(), "annual_payment": str(annual_return), "payment_per_due_date": str(installment)})
+    # Investment is a historical receipt, not a remuneration contract. A receipt
+    # explicitly reconciled to FundContribution is displayed only in that section.
+    investment_rows = [{"party": row.stakeholder.name, "identifier": str(row.stakeholder.public_id),
+        "amount": str(row.amount), "currency": row.currency.code, "date": str(row.invested_on)}
+        for row in investments.filter(received_contribution__isnull=True)]
     contribution_rows = [{
         "date": c.received_on.strftime("%d/%m/%Y"),
         "origin": c.get_origin_display(),
@@ -386,6 +385,9 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
     stakeholder_rows = []
     for party in stakeholders.order_by("type", "name"):
         contract = party.ordered_contracts[0] if party.ordered_contracts else None
+        from apps.finance.events import effective_rule
+        remuneration = effective_rule(party, "REMUNERATION", end_date) if party.type == "INVESTOR" else None
+        fixed_remuneration = f"{remuneration.value} {remuneration.currency.code}" if remuneration and remuneration.currency_id else "Non configurée"
         shareholder_value = (party.share_count * party.share_unit_value).quantize(Decimal("0.01"))
         estimated_dividend = (shareholder_value * party.dividend_percent / Decimal("100")).quantize(Decimal("0.01"))
         stakeholder_rows.append({
@@ -394,7 +396,7 @@ def monthly_financial_snapshot(*, user, year, month, agent=None, stakeholder=Non
             "contract": contract.title if contract else "", "starts_on": str(contract.starts_on) if contract else "",
             "ends_on": str(contract.ends_on) if contract and contract.ends_on else "Sans échéance",
             "clauses": contract.clauses if contract else "", "contract_status": contract.get_status_display() if contract else "",
-            "return_percent": str(party.investor_return_percent) if party.type == "INVESTOR" else "-",
+            "fixed_remuneration": fixed_remuneration if party.type == "INVESTOR" else "-",
             "payment_frequency": party.get_payment_frequency_display() if party.type == "INVESTOR" else "-",
             "shares": str(party.share_count) if party.type == "SHAREHOLDER" else "-",
             "share_unit_value": str(party.share_unit_value) if party.type == "SHAREHOLDER" else "-",
@@ -929,7 +931,7 @@ def _monthly_pdf(snapshot, user):
     # 4. INVESTISSEMENTS ET PAIEMENTS CALCULÉS (& APPORTS REÇUS)
     # =========================================================================
     story.append(PageBreak())
-    story.append(Paragraph("4. Investissements et paiements calculés", styles["SectionHeading"]))
+    story.append(Paragraph("4. Versements reçus et rapprochement", styles["SectionHeading"]))
     investments = snapshot.get("investments", [])
     contributions = snapshot.get("contributions", [])
 
@@ -939,67 +941,27 @@ def _monthly_pdf(snapshot, user):
         uuid_map[uid] = f"[{uid[:8]}]"
 
     if investments:
-        story.append(Paragraph("4.1. Investissements contractuels", styles["SubSectionHeading"]))
-        inv_headers = [
-            Paragraph("Partie prenante", styles["Th"]),
-            Paragraph("Réf.", styles["ThCenter"]),
-            Paragraph("Date", styles["ThCenter"]),
-            Paragraph("Montant investi", styles["ThRight"]),
-            Paragraph("Devise", styles["ThCenter"]),
-            Paragraph("Rendement", styles["ThRight"]),
-            Paragraph("Fréquence", styles["ThCenter"]),
-            Paragraph("Paiement annuel", styles["ThRight"]),
-            Paragraph("Paiement / échéance", styles["ThRight"]),
-        ]
-        inv_data = [inv_headers]
-        tot_inv = Decimal("0")
-        tot_ann = Decimal("0")
-        tot_inst = Decimal("0")
-        inv_curr = "USD"
+        story.append(Paragraph("4.1. Versements historiques non rapprochés (ne pas additionner aux apports sans vérification)", styles["SubSectionHeading"]))
+        inv_data = [[Paragraph(label, styles["Th"]) for label in ["Partie prenante", "Réf.", "Date", "Montant reçu", "Devise"]]]
+        totals = {}
         for r in investments:
-            tot_inv += Decimal(r["amount"])
-            tot_ann += Decimal(r["annual_payment"])
-            tot_inst += Decimal(r["payment_per_due_date"])
-            inv_curr = r["currency"]
-            uid_short = uuid_map.get(r["identifier"], f"[{r['identifier'][:8]}]")
+            totals[r["currency"]] = totals.get(r["currency"], Decimal("0")) + Decimal(r["amount"])
             inv_data.append([
                 Paragraph(_escape_xml(r["party"]), styles["TdBold"]),
-                Paragraph(uid_short, styles["TdCenter"]),
+                Paragraph(uuid_map.get(r["identifier"], f"[{r['identifier'][:8]}]"), styles["TdCenter"]),
                 Paragraph(_fmt_date(r["date"]), styles["TdCenter"]),
                 Paragraph(_fmt_money(r["amount"]), styles["TdRight"]),
                 Paragraph(r["currency"], styles["TdCenter"]),
-                Paragraph(_fmt_percent(r["return_percent"]), styles["TdRight"]),
-                Paragraph(_escape_xml(r["frequency"]), styles["TdCenter"]),
-                Paragraph(_fmt_money(r["annual_payment"]), styles["TdRight"]),
-                Paragraph(_fmt_money(r["payment_per_due_date"]), styles["TdRight"]),
             ])
-        inv_data.append([
-            Paragraph("TOTAL INVESTISSEMENTS", styles["TotalLabel"]),
-            Paragraph("", styles["TotalLabel"]),
-            Paragraph("", styles["TotalLabel"]),
-            Paragraph(_fmt_money(tot_inv), styles["TotalValue"]),
-            Paragraph(inv_curr, styles["TotalCenter"]),
-            Paragraph("-", styles["TotalCenter"]),
-            Paragraph("-", styles["TotalCenter"]),
-            Paragraph(_fmt_money(tot_ann), styles["TotalValue"]),
-            Paragraph(_fmt_money(tot_inst), styles["TotalValue"]),
-        ])
-        inv_widths = [135, 60, 60, 75, 40, 65, 80, 85, 85]
-        scale = usable_width / sum(inv_widths)
-        inv_widths = [w * scale for w in inv_widths]
-        inv_table = Table(inv_data, colWidths=inv_widths, repeatRows=1, hAlign="LEFT")
+        for code, total in sorted(totals.items()):
+            inv_data.append([Paragraph("TOTAL HISTORIQUE", styles["TdBold"]), "", "",
+                Paragraph(_fmt_money(total), styles["TdRight"]), Paragraph(code, styles["TdCenter"])])
+        inv_table = Table(inv_data, colWidths=[usable_width * ratio for ratio in [.4, .15, .15, .2, .1]], repeatRows=1, hAlign="LEFT")
         inv_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), c_primary),
-            ("GRID", (0, 0), (-1, -2), 0.5, c_border),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [c_white, c_row_alt]),
+            ("GRID", (0, 0), (-1, -1), .5, c_border),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [c_white, c_row_alt]),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("BACKGROUND", (0, -1), (-1, -1), c_dark),
-            ("LINEABOVE", (0, -1), (-1, -1), 1, c_gold),
-            ("SPAN", (0, -1), (2, -1)),
         ]))
         story.append(inv_table)
         story.append(Spacer(1, 2 * mm))
@@ -1218,7 +1180,7 @@ def _monthly_pdf(snapshot, user):
         if ptype == "Investisseur":
             at_maturity_label = "À l'échéance"
             fin_info = (
-                f"<b>Rendement contractuel :</b> {_fmt_percent(party.get('return_percent'))}  &nbsp;|&nbsp;  "
+                f"<b>Rémunération contractuelle fixe :</b> {_escape_xml(party.get('fixed_remuneration', 'Non configurée'))}  &nbsp;|&nbsp;  "
                 f"<b>Fréquence de paiement :</b> {party.get('payment_frequency') or at_maturity_label}<br/>"
                 f"<b>Parts sociales :</b> <font color='#596763'>N/A</font>  &nbsp;|&nbsp;  "
                 f"<b>Dividende :</b> <font color='#596763'>N/A</font>  &nbsp;|&nbsp;  "

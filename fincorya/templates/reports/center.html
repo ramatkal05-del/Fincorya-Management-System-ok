@@ -15,6 +15,7 @@
 </div>
 {% include "reports/_center_result.html" %}
 {% if monthly_form %}
+<section class="panel report-card"><div class="panel-heading"><div><p class="eyebrow">Situation de fin de mois</p><h2>Septembre 2026</h2></div><a class="button button-primary" href="{% url 'reports:month_end_statement' %}">Consulter la situation</a></div><p class="muted">Cash final, charges et commissions par semaine, partenariat GO TRAVEL (Fantiny) et rapprochement avec les écritures.</p></section>
 <section class="panel report-card"><div class="panel-heading"><div><p class="eyebrow">Administration</p><h2>Rapport mensuel consolidé</h2></div></div><p class="muted">Retrouvez les salaires, les investissements et les fiches des parties prenantes pour le mois choisi.</p><form method="post" action="{% url 'reports:monthly' %}" class="financial-form report-form" novalidate>{% csrf_token %}{% include "_form_fields.html" with form=monthly_form %}<div class="button-row form-actions"><button class="button button-primary" type="submit">Télécharger le rapport mensuel</button></div></form></section>
 {% endif %}
 <section class="panel report-card"><div class="panel-heading"><h2>Exports récents</h2></div>

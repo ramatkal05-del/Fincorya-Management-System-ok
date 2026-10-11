@@ -1,0 +1,325 @@
+{
+  "source_file": "OCTOBRE 1.xlsx",
+  "sha256": "9142836bbe5af289d60a44ee296e1db4796b90e71b4b4e8cb20fde7f5ffe0366",
+  "sheet": "Feuil1",
+  "title": "RAPPORT 1 DU MOIS D'OCTOBRE",
+  "signature_date": "LE 04/09/2026",
+  "currency": "USD",
+  "capital": [
+    {
+      "name": "MESCHACK BUKASA",
+      "amount": "7000",
+      "source_row": 7
+    },
+    {
+      "name": "GLODIE KONGOLO",
+      "amount": "4370",
+      "source_row": 8
+    },
+    {
+      "name": "RUTH NGOMO",
+      "amount": "3400",
+      "source_row": 9
+    },
+    {
+      "name": "JENOVIC MPOTO",
+      "amount": "1600",
+      "source_row": 10
+    },
+    {
+      "name": "FANTINY PELENDA",
+      "amount": "1500",
+      "source_row": 11
+    },
+    {
+      "name": "JOSEPH OMARI",
+      "amount": "1090",
+      "source_row": 12
+    }
+  ],
+  "expenses": [
+    {
+      "amount": "10",
+      "label": "10$ pour l’achat du forfait du mois",
+      "source_row": 16
+    },
+    {
+      "amount": "126",
+      "label": "126$ pour le frais d'envoie de 6000$ par Moneygram",
+      "source_row": 17
+    },
+    {
+      "amount": "15",
+      "label": "15$ pour la commission Moneygram chypre",
+      "source_row": 18
+    }
+  ],
+  "operations": [
+    {
+      "source_row": 22,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "1336",
+      "agent": "CHRIS",
+      "commission": "64",
+      "city": "GIRNE",
+      "account_owner": "GLODIE"
+    },
+    {
+      "source_row": 23,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "185",
+      "agent": "DAV",
+      "commission": "15",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 24,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "62",
+      "agent": "CHRIS",
+      "commission": "8",
+      "city": "GIRNE",
+      "account_owner": "GLODIE"
+    },
+    {
+      "source_row": 25,
+      "group": "FINCORYA",
+      "network": "AIRTEL",
+      "send": "45",
+      "withdrawal": "0",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 26,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "30",
+      "withdrawal": "0",
+      "agent": "CHRIS",
+      "commission": "5",
+      "city": "GIRNE",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 27,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "190",
+      "agent": "CHRIS",
+      "commission": "15",
+      "city": "GIRNE",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 28,
+      "group": "FINCORYA",
+      "network": "ORANGE",
+      "send": "20",
+      "withdrawal": "0",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 29,
+      "group": "FINCORYA",
+      "network": "AIRTEL",
+      "send": "30",
+      "withdrawal": "0",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 30,
+      "group": "FINCORYA",
+      "network": "PAYPAL",
+      "send": "0",
+      "withdrawal": "49",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "GLODIE"
+    },
+    {
+      "source_row": 31,
+      "group": "FINCORYA",
+      "network": "PAYPAL",
+      "send": "0",
+      "withdrawal": "11",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "GLODIE"
+    },
+    {
+      "source_row": 32,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "10",
+      "withdrawal": "0",
+      "agent": "DAV",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 33,
+      "group": "FINCORYA",
+      "network": "ORANGE",
+      "send": "20",
+      "withdrawal": "0",
+      "agent": "GRACE",
+      "commission": "5",
+      "city": "GIRNE",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 34,
+      "group": "FINCORYA",
+      "network": "AIRTEL",
+      "send": "10",
+      "withdrawal": "0",
+      "agent": "VICTORIA",
+      "commission": "5",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 35,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "200",
+      "agent": "DAV",
+      "commission": "20",
+      "city": "LEFKOSA",
+      "account_owner": "GLODIE"
+    },
+    {
+      "source_row": 36,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "60",
+      "withdrawal": "0",
+      "agent": "CHRIS",
+      "commission": "8",
+      "city": "GIRNE",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 37,
+      "group": "FINCORYA",
+      "network": "VODACOM",
+      "send": "60",
+      "withdrawal": "0",
+      "agent": "VICTORIA",
+      "commission": "8",
+      "city": "LEFKOSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 45,
+      "group": "GO TRAVEL",
+      "network": "VODACOM",
+      "send": "100",
+      "withdrawal": "0",
+      "agent": "FANTINY",
+      "commission": "8",
+      "city": "MAGUSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 46,
+      "group": "GO TRAVEL",
+      "network": "VODACOM",
+      "send": "15",
+      "withdrawal": "0",
+      "agent": "FANTINY",
+      "commission": "5",
+      "city": "MAGUSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 47,
+      "group": "GO TRAVEL",
+      "network": "VODACOM",
+      "send": "50",
+      "withdrawal": "0",
+      "agent": "FANTINY",
+      "commission": "8",
+      "city": "MAGUSA",
+      "account_owner": "JENOVIC"
+    },
+    {
+      "source_row": 48,
+      "group": "GO TRAVEL",
+      "network": "VODACOM",
+      "send": "0",
+      "withdrawal": "500",
+      "agent": "FANTINY",
+      "commission": "30",
+      "city": "MAGUSA",
+      "account_owner": "GLODIE"
+    }
+  ],
+  "cash": [
+    {
+      "agent": "VICTORIA",
+      "opening": "393",
+      "closing": "596",
+      "city": "LEFKOSA",
+      "source_row": 56
+    },
+    {
+      "agent": "DAV",
+      "opening": "329",
+      "closing": "-41",
+      "city": "LEFKOSA",
+      "source_row": 57
+    },
+    {
+      "agent": "CHRIS",
+      "opening": "1215",
+      "closing": "428",
+      "city": "GIRNE",
+      "source_row": 58
+    },
+    {
+      "agent": "FANTINY",
+      "opening": "0",
+      "closing": "-314",
+      "city": "MAGUSA",
+      "source_row": 59
+    },
+    {
+      "agent": "GRACE",
+      "opening": "0",
+      "closing": "25",
+      "city": "MAGUSA",
+      "source_row": 60
+    }
+  ],
+  "issues": [
+    "Titre octobre mais signature 04/09/2026 ; dates individuelles absentes.",
+    "Nature du capital : situation existante ou nouveaux apports ? confirmer.",
+    "Modes de commission envoi/retrait ? confirmer.",
+    "COMPTE indique GLODIE/JENOVIC sans compte r?seau pr?cis.",
+    "GRACE : GIRNE sur transaction, MAGUSA sur tableau caisse.",
+    "Soldes n?gatifs : avances personnelles selon la note A62, pas cash n?gatif.",
+    "Le transfert Moneygram de 6000 USD est mentionn? dans les charges, sans d?tails suffisants pour le cr?er."
+  ]
+}

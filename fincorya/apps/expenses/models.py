@@ -45,6 +45,16 @@ class Expense(models.Model):
         constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="expense_amount_positive")]
         indexes = [models.Index(fields=["status", "-incurred_on"], name="expense_status_date_idx")]
 
+    @property
+    def paid_amount(self):
+        from decimal import Decimal
+        return sum((payment.amount for payment in self.payments.all()), Decimal("0.00"))
+
+    @property
+    def remaining_amount(self):
+        from decimal import Decimal
+        return self.amount - self.paid_amount if self.status == ExpenseStatus.APPROVED else Decimal("0.00")
+
     def clean(self):
         from django.core.exceptions import ValidationError
         if self.category == ExpenseCategory.SALARY and not self.agent_id:

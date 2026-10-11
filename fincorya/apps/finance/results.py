@@ -13,6 +13,7 @@ from django.db.models import Sum
 from config.business_time import business_day_bounds
 from .models import AccountNature, AccountType, DistributionMode, DistributionPolicy, FinancialAccount, RuleKind
 from .services import ledger_balance
+from .calculations import partner_commissions
 
 ZERO = Decimal("0.00")
 MISSING_POLICY_MESSAGE = ("Aucune politique de distribution datée n’est en vigueur. Configurez-la dans Finance › Distribution › "
@@ -53,15 +54,16 @@ def compute_result(period, currency):
     from apps.stakeholders.models import PartnerOperation
     start, end = business_day_bounds(period.start_date, period.end_date)
     accounts = FinancialAccount.objects.filter(currency=currency).select_related("currency")
-    income = sum((_delta(a, start, end) for a in accounts.filter(nature=AccountNature.INCOME)), ZERO)
+    income = sum((_delta(a, start, end) for a in accounts.filter(nature=AccountNature.INCOME).exclude(account_type=AccountType.FX_DIFFERENCE)), ZERO)
     expenses = {"salaries": ZERO, "other_expenses": ZERO, "supplier_fees": ZERO, "investor_returns": ZERO}
-    for account in accounts.filter(nature=AccountNature.EXPENSE):
+    for account in accounts.filter(nature=AccountNature.EXPENSE).exclude(account_type=AccountType.FX_DIFFERENCE):
         expenses[_expense_group(account)] += _delta(account, start, end)
     attributed = PartnerOperation.objects.filter(operation__status="COMPLETED", operation__currency=currency,
                                                  operation__created_at__gte=start, operation__created_at__lt=end).select_related("operation")
-    partner_gross = sum((row.operation.fee for row in attributed), ZERO)
-    partner_share = sum(((row.operation.fee * row.share_percent / 100).quantize(Decimal("0.01")) for row in attributed), ZERO)
-    fincorya_share = partner_gross - partner_share
+    commissions = partner_commissions(attributed)
+    partner_gross = commissions["partner_gross"]
+    partner_share = commissions["partner_share"]
+    fincorya_share = commissions["fincorya_share"]
     own = income - fincorya_share
     total_expenses = sum(expenses.values(), ZERO)
     net = income - total_expenses

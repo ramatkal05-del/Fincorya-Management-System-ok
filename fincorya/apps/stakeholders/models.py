@@ -33,7 +33,7 @@ class Stakeholder(models.Model):
     share_count = models.DecimalField(max_digits=18, decimal_places=4, default=0, verbose_name=_("Nombre d'actions"))
     share_unit_value = models.DecimalField(max_digits=18, decimal_places=2, default=0, verbose_name=_("Valeur unitaire de l'action"))
     dividend_percent = models.DecimalField(max_digits=7, decimal_places=2, default=0, verbose_name=_("Pourcentage de dividende (%)"))
-    partner_share_percent = models.DecimalField(max_digits=7, decimal_places=2, default=40, verbose_name=_("Part partenaire (%)"))
+    partner_share_percent = models.DecimalField(max_digits=7, decimal_places=2, default=60, verbose_name=_("Part partenaire (%)"))
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -74,16 +74,12 @@ class Investment(models.Model):
 class PartnerOperation(models.Model):
     stakeholder = models.ForeignKey(Stakeholder, on_delete=models.RESTRICT, related_name="partner_operations")
     operation = models.OneToOneField("operations.Operation", on_delete=models.RESTRICT, related_name="partner_attribution")
-    share_percent = models.DecimalField(max_digits=5, decimal_places=2, default=40)
+    share_percent = models.DecimalField(max_digits=5, decimal_places=2, default=60)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [models.CheckConstraint(condition=models.Q(share_percent__gte=0, share_percent__lte=100), name="partner_share_valid")]
 
-    def save(self, *args, **kwargs):
-        if self._state.adding and self.share_percent == 40 and self.stakeholder_id:
-            self.share_percent = self.stakeholder.partner_share_percent
-        super().save(*args, **kwargs)
 
 class EconomicRole(models.TextChoices):
     SHAREHOLDER = "SHAREHOLDER", _("Actionnaire")

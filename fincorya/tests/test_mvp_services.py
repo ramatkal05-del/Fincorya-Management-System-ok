@@ -73,19 +73,17 @@ class FincoryaServiceTestCase(TestCase):
         with self.assertRaises(PermissionDenied):
             decide_expense(expense_id=expense.pk, actor=self.partner, decision=ApprovalDecision.APPROVED)
 
-    def test_profit_split_reconciles_to_net(self):
+    def test_retired_profit_split_cannot_create_new_distributions(self):
         operation = receive_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("10"), tariff_schedule=self.schedule)
         pay_received_transfer(operation_id=operation.pk, paid_by=self.agent)
         expense = Expense.objects.create(label="Charge", amount=Decimal("1"), currency=self.usd, incurred_on=date.today(), created_by=self.admin)
         decide_expense(expense_id=expense.pk, actor=self.admin, decision=ApprovalDecision.APPROVED)
         period = ProfitPeriod.objects.create(start_date=date.today(), end_date=date.today(), currency=self.usd)
-        calculate_profit_period(period_id=period.pk, actor=self.admin)
+        with self.assertRaisesMessage(ValidationError, "60/20/20"):
+            calculate_profit_period(period_id=period.pk, actor=self.admin)
         period.refresh_from_db()
-        self.assertEqual(period.gross_fees, Decimal("5.00"))
-        self.assertEqual(period.deductible_expenses, Decimal("1.00"))
-        self.assertEqual(period.net_profit, Decimal("4.00"))
-        self.assertEqual(sum(period.allocations.values_list("amount", flat=True)), period.net_profit)
-        self.assertEqual(list(period.allocations.order_by("bucket").values_list("percentage", flat=True)), [Decimal("60.00"), Decimal("20.00"), Decimal("20.00")])
+        self.assertEqual(period.status, "DRAFT")
+        self.assertFalse(period.allocations.exists())
 
     def test_sent_transfer_credits_amount_plus_fee(self):
         create_sent_transfer(agent=self.agent, account_id=self.account.pk, amount=Decimal("40.00"), tariff_schedule=self.schedule)
@@ -116,6 +114,15 @@ class FincoryaServiceTestCase(TestCase):
             close_cash_day(account_id=self.account.pk, business_date=date.today(), declared_cash=Decimal("990"), closed_by=self.agent)
         closure = close_cash_day(account_id=self.account.pk, business_date=date.today(), declared_cash=Decimal("990"), closed_by=self.agent, justification="Écart de comptage vérifié")
         self.account.refresh_from_db()
+        self.assertEqual(closure.status, ClosureStatus.REVIEW)
+        self.assertEqual(self.account.balance, Decimal("1000.00"))
+        self.assertTrue(self.account.is_locked)
+        from apps.cash.services import approve_closure_correction
+        with self.assertRaises(PermissionDenied):
+            approve_closure_correction(closure_id=closure.pk, actor=self.agent, justification="Vérifié")
+        approve_closure_correction(closure_id=closure.pk, actor=self.admin, justification="Manquant confirmé")
+        self.account.refresh_from_db()
+        closure.refresh_from_db()
         self.assertEqual(closure.status, ClosureStatus.CLOSED)
         self.assertEqual(closure.variance, Decimal("-10.00"))
         self.assertEqual(self.account.balance, Decimal("990.00"))

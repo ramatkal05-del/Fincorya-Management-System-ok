@@ -157,7 +157,11 @@ def _attach_partner(operation, stakeholder):
     from apps.finance.funds import assert_partner_ceiling
     from apps.stakeholders.models import PartnerOperation
     assert_partner_ceiling(stakeholder, operation)
-    PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation)
+    from apps.finance.events import effective_rule
+    from config.business_time import business_date
+    rule = effective_rule(stakeholder, "COMMISSION", business_date(operation.created_at))
+    PartnerOperation.objects.create(stakeholder=stakeholder, operation=operation,
+        share_percent=rule.value if rule else stakeholder.partner_share_percent)
 
 
 def _notify_operation(operation, actor, action):

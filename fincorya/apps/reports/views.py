@@ -15,6 +15,19 @@ from .services import generate_finance_report, generate_monthly_report
 
 
 @mfa_required
+def month_end_statement(request):
+    if request.user.role != Role.ADMIN:
+        raise PermissionDenied("La situation mensuelle est réservée à l’administrateur.")
+    from apps.finance.models import ImportRow
+    from .month_end import build_month_end_statement
+    try:
+        context = build_month_end_statement()
+    except ImportRow.DoesNotExist:
+        raise Http404("La situation déclarée de septembre n’a pas encore été enregistrée.")
+    return render(request, 'reports/month_end_statement.html', context)
+
+
+@mfa_required
 def report_center(request):
     """Single entry point for every role: standard reports plus, for admins, the
     monthly consolidated export. Kinds, periods and scope are decided server-side."""

@@ -23,6 +23,8 @@ def create_distribution_policy(*, actor, mode, effective_from, shares, notes="")
         raise ValidationError("Pourcentage invalide.")
     if mode != DistributionMode.CAPITAL_PROPORTIONAL and sum(shares.values()) != 100:
         raise ValidationError("Les parts sélectionnées doivent totaliser 100 %.")
+    if mode != DistributionMode.EQUAL_SHARES or len(shares) != 4 or any(value != Decimal("25") for value in shares.values()):
+        raise ValidationError("La nouvelle politique doit désigner quatre actionnaires à parts égales de 25 %.")
     policy = DistributionPolicy(mode=mode, effective_from=effective_from, notes=notes, created_by=actor)
     policy.full_clean()
     policy.save()

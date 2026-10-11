@@ -11,8 +11,16 @@
 {% endif %}
 {% if can_manage %}
 <section class="operation-control-grid" aria-label="Actions sur la caisse">
-  <details class="panel control-panel"><summary>Remettre des espèces</summary><p class="muted">Enregistre une remise physique de cette caisse vers l’administrateur ; le mouvement n’est appliqué qu’après confirmation par une autre personne.</p><form method="post" action="{% url 'cash:handover_create' account.pk %}" class="stack-form">{% csrf_token %}{% for field in handover_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<button class="button button-primary" type="submit">Envoyer la remise</button></form></details>
-  <details class="panel control-panel"><summary>Clôturer la journée</summary><p class="muted">Déclarez le montant réellement compté ; tout écart avec le solde théorique exige une justification et crée un mouvement d’ajustement automatique et tracé.</p><form method="post" action="{% url 'cash:closure_create' account.pk %}" class="stack-form">{% csrf_token %}{% for field in closure_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<div id="closure-preview" hx-get="{% url 'cash:closure_preview' account.pk %}" hx-trigger="input changed delay:300ms from:#id_declared_cash" hx-include="closest form"></div><button class="button button-primary" type="submit">Clôturer la journée</button></form></details>
+  <details class="panel control-panel"><summary>Remettre des fonds</summary><p class="muted">Enregistre une remise physique de cette caisse vers l’administrateur ; le mouvement n’est appliqué qu’après confirmation par une autre personne.</p><form method="post" action="{% url 'cash:handover_create' account.pk %}" class="stack-form">{% csrf_token %}{% for field in handover_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<button class="button button-primary" type="submit">Envoyer la remise</button></form></details>
+  <details class="panel control-panel"><summary>Clôturer la journée</summary><p class="muted">Déclarez le montant réellement compté ; tout écart avec le solde théorique exige une justification et attend une validation administrative avant toute correction du solde.</p><form method="post" action="{% url 'cash:closure_create' account.pk %}" class="stack-form">{% csrf_token %}{% for field in closure_form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field|accessible_widget }}</div>{% endfor %}<div id="closure-preview" hx-get="{% url 'cash:closure_preview' account.pk %}" hx-trigger="input changed delay:300ms from:#id_declared_cash" hx-include="closest form"></div><button class="button button-primary" type="submit">Clôturer la journée</button></form></details>
 </section>
 {% endif %}
+{% for closure in pending_closures %}
+<section class="panel"><h2>écart à valider — {{ closure.business_date }}</h2>
+<p>Solde théorique : {{ closure.expected_balance }} · Comptage : {{ closure.declared_cash }} · Écart : {{ closure.variance }} {{ account.currency.code }}</p>
+<p>{{ closure.justification }}</p>
+{% if can_confirm_handover %}<form method="post" action="{% url 'cash:closure_approve' account.pk closure.pk %}" class="stack-form">{% csrf_token %}
+<label for="correction-{{ closure.pk }}">Justification de la correction</label><textarea id="correction-{{ closure.pk }}" name="justification" required></textarea>
+<button class="button button-primary" type="submit">Valider la correction du solde</button></form>{% endif %}
+</section>{% endfor %}
 {% endblock %}

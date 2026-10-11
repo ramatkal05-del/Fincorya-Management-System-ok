@@ -213,9 +213,11 @@ def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, cl
         account=account, business_date=business_date,
         defaults={"opening_balance": account.balance},
     )
-    if closure.status == ClosureStatus.CLOSED:
+    if closure.status != ClosureStatus.OPEN:
         raise ValidationError(_("Cette journée est déjà clôturée."))
 
+    if account.is_locked or account.closures.filter(status=ClosureStatus.REVIEW).exists():
+        raise ValidationError("Cette caisse est verrouillée ou présente un écart à valider.")
     account.is_locked = True
     account.save(update_fields=["is_locked"])
 
@@ -226,7 +228,7 @@ def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, cl
     closure.declared_cash = declared_cash
     closure.variance = variance
     closure.justification = justification.strip()
-    closure.status = ClosureStatus.CLOSED
+    closure.status = ClosureStatus.REVIEW if variance else ClosureStatus.CLOSED
     closure.closed_by = closed_by
     closure.closed_at = timezone.now()
     closure.save()
@@ -236,18 +238,10 @@ def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, cl
         after={"expected": str(closure.expected_balance), "declared": str(declared_cash), "variance": str(closure.variance)},
     )
 
-    # Unlock for the next business day (locking only protects the closing instant).
-    account.is_locked = False
+    # A discrepancy is a finding, not an authorization to change cash.
+    account.is_locked = bool(variance)
     account.save(update_fields=["is_locked"])
     if variance:
-        adjustment = apply_movement(
-            account=account,
-            direction=MovementDirection.IN if variance > 0 else MovementDirection.OUT,
-            amount=abs(variance), movement_type=MovementType.ADJUSTMENT,
-            actor=closed_by, note=f"Report du compté après clôture {business_date}",
-        )
-        from apps.finance.events import record_cash_adjustment
-        record_cash_adjustment(adjustment, closed_by)
         recipients = {closed_by, *User.objects.filter(role=Role.ADMIN, is_active=True)}
         for recipient in recipients:
             notify(
@@ -255,8 +249,41 @@ def close_cash_day(*, account_id: int, business_date, declared_cash: Decimal, cl
                 body=f"{account.currency.code}: théorique {closure.expected_balance}, compté {declared_cash}, écart {variance}",
                 level="WARNING",
             )
+    if variance:
+        return closure
     DailyClosure.objects.get_or_create(
         account=account, business_date=business_date + timedelta(days=1),
         defaults={"opening_balance": declared_cash},
     )
+    return closure
+
+
+@ledger_atomic
+def approve_closure_correction(*, closure_id, actor, justification):
+    """Explicit administrator approval; the original count and variance remain visible."""
+    if actor.role != Role.ADMIN:
+        raise PermissionDenied("Seul un administrateur peut valider une correction de caisse.")
+    closure = DailyClosure.objects.select_for_update().get(pk=closure_id)
+    if closure.status != ClosureStatus.REVIEW:
+        raise ValidationError("Cette clôture ne présente pas de correction en attente.")
+    if not justification.strip():
+        raise ValidationError("Justifiez la validation de la correction.")
+    account = CashAccount.objects.select_for_update().get(pk=closure.account_id)
+    if account.balance != closure.expected_balance:
+        raise ValidationError("Le solde a changé depuis le comptage ; un rapprochement est nécessaire.")
+    account.is_locked = False
+    account.save(update_fields=["is_locked"])
+    adjustment = apply_movement(account=account,
+        direction=MovementDirection.IN if closure.variance > 0 else MovementDirection.OUT,
+        amount=abs(closure.variance), movement_type=MovementType.ADJUSTMENT,
+        actor=actor, note=f"Correction validée clôture #{closure.pk}: {justification.strip()}")
+    from apps.finance.events import record_cash_adjustment
+    record_cash_adjustment(adjustment, actor)
+    closure.status = ClosureStatus.CLOSED
+    closure.save(update_fields=["status"])
+    DailyClosure.objects.get_or_create(account=account,
+        business_date=closure.business_date + timedelta(days=1),
+        defaults={"opening_balance": closure.declared_cash})
+    audit_record(actor=actor, action="CASH_CORRECTION_APPROVE", instance=closure,
+        after={"movement_id": adjustment.pk, "variance": str(closure.variance), "justification": justification.strip()})
     return closure

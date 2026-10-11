@@ -3,6 +3,7 @@ from . import views
 
 app_name = "cash"
 urlpatterns = [
+    path("<int:account_id>/cloture/<int:closure_id>/valider/", views.closure_approve, name="closure_approve"),
     path("", views.cash_list, name="list"),
     path("<int:account_id>/", views.cash_detail, name="detail"),
     path("<int:account_id>/remise/", views.handover_create, name="handover_create"),

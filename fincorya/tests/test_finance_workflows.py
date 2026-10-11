@@ -121,10 +121,16 @@ class FinanceWorkflowTests(FinanceScenario, TestCase):
         self.assertEqual(ledger_balance(FinancialAccount.objects.get(legacy_global_account=self.global_cash)), self.global_cash.balance)
 
     def test_closure_variance_adjustment_keeps_both_cash_projections_equal(self):
-        from apps.cash.services import close_cash_day
+        from apps.cash.services import close_cash_day, approve_closure_correction
         with patch('django.utils.timezone.now', return_value=JULY):
-            close_cash_day(account_id=self.legacy.pk, business_date=date(2026, 7, 15),
+            closure = close_cash_day(account_id=self.legacy.pk, business_date=date(2026, 7, 15),
                 declared_cash=Decimal('995'), closed_by=self.agent, justification='Écart de comptage')
+            self.legacy.refresh_from_db()
+            self.assertEqual(self.legacy.balance, Decimal('1000'))
+            self.assertEqual(JournalBatch.objects.filter(event_type='CASH_ADJUSTMENT').count(), 0)
+            approve_closure_correction(closure_id=closure.pk, actor=self.admin, justification='Manquant vérifié')
+            with self.assertRaises(ValidationError):
+                approve_closure_correction(closure_id=closure.pk, actor=self.admin, justification='Double clic')
         self.legacy.refresh_from_db()
         self.assertEqual(self.legacy.balance, Decimal('995'))
         self.assertEqual(ledger_balance(self.cash), self.legacy.balance)

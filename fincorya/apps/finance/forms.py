@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django import forms
 
 from .models import (DistributionMode, DistributionPolicy, FinancialAccount, FinancialPeriod, EconomicRule, EntrySide,
@@ -162,39 +163,20 @@ class GuaranteeForm(forms.Form):
 
 
 class PolicyForm(forms.Form):
-    """Admin selects existing shareholders, the mode and the effective date; percentages must total 100."""
-    mode = forms.ChoiceField(label="Mode de répartition", choices=DistributionMode.choices, initial="EQUAL_SHARES")
+    """New dated policies explicitly select the four equal beneficiaries."""
+    mode = forms.ChoiceField(label="Répartition", choices=[("EQUAL_SHARES", "Quatre actionnaires à 25 %")], initial="EQUAL_SHARES")
     effective_from = forms.DateField(label="Date d’entrée en vigueur", widget=forms.DateInput(attrs={"type": "date"}))
-    shareholders = forms.ModelMultipleChoiceField(label="Bénéficiaires (sélection obligatoire ; politique initiale : quatre actionnaires à 25 %)",
-                                                  required=True, queryset=Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("name"),
-                                                  widget=forms.CheckboxSelectMultiple)
+    shareholders = forms.ModelMultipleChoiceField(label="Les quatre actionnaires bénéficiaires",
+        queryset=Stakeholder.objects.filter(type="SHAREHOLDER", is_active=True).order_by("name"),
+        widget=forms.CheckboxSelectMultiple)
     notes = forms.CharField(label="Notes", required=False, max_length=255)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for party in self.fields["shareholders"].queryset:
-            self.fields[f"percent_{party.pk}"] = forms.DecimalField(label=f"Pourcentage — {party.name}", required=False, min_value=0, max_value=100, decimal_places=4, max_digits=7)
 
     def clean(self):
         data = super().clean()
         parties = list(data.get("shareholders") or [])
-        if not parties:
-            return data
-        mode = data.get("mode")
-        if mode == "EQUAL_SHARES":
-            from decimal import Decimal, ROUND_DOWN
-            equal = (Decimal("100") / len(parties)).quantize(Decimal("0.0001"), rounding=ROUND_DOWN)
-            shares = {party.pk: equal for party in parties}
-            shares[parties[-1].pk] = Decimal("100") - equal * (len(parties) - 1)
-        elif mode == "CAPITAL_PROPORTIONAL":
-            shares = {party.pk: 0 for party in parties}
-        else:
-            shares = {party.pk: data.get(f"percent_{party.pk}") for party in parties}
-            if any(value is None for value in shares.values()):
-                raise forms.ValidationError("Saisissez un pourcentage pour chaque actionnaire sélectionné.")
-            if sum(shares.values()) != 100:
-                raise forms.ValidationError(f"Les pourcentages totalisent {sum(shares.values())} % ; ils doivent totaliser exactement 100 %.")
-        data["shares"] = shares
+        if parties and len(parties) != 4:
+            raise forms.ValidationError("Sélectionnez exactement quatre actionnaires ; chacun reçoit 25 % de l’enveloppe distribuable.")
+        data["shares"] = {party.pk: Decimal("25") for party in parties}
         return data
 
 

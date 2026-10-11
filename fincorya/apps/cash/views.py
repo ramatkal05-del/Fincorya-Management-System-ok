@@ -6,8 +6,8 @@ from django.views.decorators.http import require_POST
 from apps.accounts.models import Role
 from apps.accounts.views import mfa_required
 from .forms import ClosureForm, HandoverForm
-from .models import CashAccount, CashHandover, GlobalCashAccount, HandoverStatus
-from .services import can_manage_account, close_cash_day, confirm_handover, handover_cash
+from .models import DailyClosure, CashAccount, CashHandover, GlobalCashAccount, HandoverStatus
+from .services import approve_closure_correction, can_manage_account, close_cash_day, confirm_handover, handover_cash
 
 
 def _accounts_for(user):
@@ -32,6 +32,7 @@ def cash_detail(request, account_id):
     return render(request, "cash/detail.html", {
         "account": account, "movements": account.movements.select_related("operation")[:50],
         "can_manage": can_manage,
+        "pending_closures": account.closures.filter(status="REVIEW"),
         "handover_form": HandoverForm() if can_manage else None,
         "closure_form": ClosureForm() if can_manage else None,
         "pending_handovers": account.handovers.filter(status=HandoverStatus.PENDING).select_related("requested_by"),
@@ -76,11 +77,11 @@ def closure_create(request, account_id):
     form = ClosureForm(request.POST)
     if form.is_valid():
         try:
-            close_cash_day(account_id=account.pk, closed_by=request.user, **form.cleaned_data)
+            closure = close_cash_day(account_id=account.pk, closed_by=request.user, **form.cleaned_data)
         except (ValidationError, PermissionDenied) as exc:
             messages.error(request, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
         else:
-            messages.success(request, "Journée clôturée et ouverture suivante préparée.")
+            messages.success(request, "Écart enregistré ; correction en attente de validation administrative." if closure.status == "REVIEW" else "Journée clôturée et ouverture suivante préparée.")
     else:
         messages.error(request, "Corrigez les informations de clôture.")
     return redirect("cash:detail", account_id=account.pk)
@@ -94,3 +95,18 @@ def closure_preview(request, account_id):
     except ValidationError:
         declared = None
     return render(request, "cash/_closure_preview.html", {"account": account, "declared": declared, "variance": declared - account.balance if declared is not None else None})
+
+
+@require_POST
+@mfa_required
+def closure_approve(request, account_id, closure_id):
+    account = get_object_or_404(_accounts_for(request.user), pk=account_id)
+    closure = get_object_or_404(DailyClosure, pk=closure_id, account=account)
+    try:
+        approve_closure_correction(closure_id=closure.pk, actor=request.user,
+                                  justification=request.POST.get("justification", ""))
+    except (ValidationError, PermissionDenied) as exc:
+        messages.error(request, "; ".join(exc.messages) if hasattr(exc, "messages") else str(exc))
+    else:
+        messages.success(request, "Correction validée et enregistrée ; écart initial conservé dans la clôture.")
+    return redirect("cash:detail", account_id=account.pk)

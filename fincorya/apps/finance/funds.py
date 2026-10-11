@@ -67,7 +67,7 @@ def opening_equity(currency):
 
 @ledger_atomic
 def record_contribution(*, actor, client_key, origin, stakeholder_id, amount, currency, received_on, account_id=None,
-                        external_reference="", note="", from_opening_balances=False, evidence=None):
+                        external_reference="", note="", from_opening_balances=False, evidence=None, legacy_investment_id=None):
     """Record a received contribution once: treasury in, origin account credited.
 
     With `from_opening_balances`, the funds were already inside the reconciled opening balances: the
@@ -75,11 +75,35 @@ def record_contribution(*, actor, client_key, origin, stakeholder_id, amount, cu
     """
     require_finance_access(actor, "approve")
     _engine_required()
+    external_reference = external_reference.strip()
+    if legacy_investment_id is not None:
+        from apps.stakeholders.models import Investment
+        legacy = Investment.objects.select_for_update().get(pk=legacy_investment_id)
+        if (legacy.stakeholder_id, legacy.amount, legacy.currency_id, legacy.invested_on) != (
+                stakeholder_id, _amount(amount), currency.pk, received_on):
+            raise ValidationError("Le versement historique ne correspond pas à cet apport.")
+        if not from_opening_balances:
+            raise ValidationError("Un versement historique doit être rapproché des soldes de reprise ; ne pas recevoir les fonds deux fois.")
     existing = FundContribution.objects.filter(client_key=client_key).first()
     if existing:
-        if (existing.origin, existing.stakeholder_id, existing.amount, existing.currency_id) != (origin, stakeholder_id, _amount(amount), currency.pk):
+        if (existing.origin, existing.stakeholder_id, existing.amount, existing.currency_id,
+                existing.received_on, existing.from_opening_balances, existing.external_reference) != (
+                origin, stakeholder_id, _amount(amount), currency.pk, received_on,
+                from_opening_balances, external_reference):
             raise ValidationError("Cette clé désigne un autre apport.")
+        if not from_opening_balances and existing.receiving_account_id != account_id:
+            raise ValidationError("Cette clé désigne un apport reçu sur un autre compte.")
+        if existing.legacy_investment_id != legacy_investment_id:
+            raise ValidationError("Cette clé désigne un autre versement historique.")
         return existing
+    if legacy_investment_id is not None and FundContribution.objects.filter(legacy_investment_id=legacy_investment_id).exists():
+        raise ValidationError("Ce versement historique est déjà rattaché à un apport.")
+    if origin not in ORIGIN_PARTY_TYPE:
+        raise ValidationError("Origine des fonds inconnue.")
+    if external_reference and FundContribution.objects.filter(
+            stakeholder_id=stakeholder_id, currency=currency,
+            external_reference=external_reference).exists():
+        raise ValidationError("Cette référence de versement est déjà enregistrée pour cette partie et cette devise.")
     from apps.stakeholders.models import Stakeholder
     party = Stakeholder.objects.get(pk=stakeholder_id)
     if party.type != ORIGIN_PARTY_TYPE[origin]:
@@ -96,7 +120,7 @@ def record_contribution(*, actor, client_key, origin, stakeholder_id, amount, cu
     contribution = FundContribution.objects.create(
         client_key=client_key, origin=origin, stakeholder=party, amount=amount, currency=currency, received_on=received_on,
         receiving_account=cash, from_opening_balances=from_opening_balances, external_reference=external_reference, note=note,
-        evidence=evidence, created_by=actor)
+        evidence=evidence, created_by=actor, legacy_investment_id=legacy_investment_id)
     contribution.batch = record_event(actor=actor, source=contribution, event="CONTRIBUTION", effective_at=_effective(received_on),
         description=f"{FundOrigin(origin).label} {party.name}" + (" (reclassement de la reprise)" if from_opening_balances else ""),
         lines=[line(cash, "DEBIT", amount), line(counterpart(currency, ORIGIN_ACCOUNT[origin], party=party), "CREDIT", amount)])
@@ -594,3 +618,25 @@ def _notify_admins(subject, body):
     from apps.notifications.services import notify
     for admin in User.objects.filter(role__in=[Role.ADMIN, Role.FINANCE_MANAGER], is_active=True):
         notify(recipient=admin, subject=subject, body=body, level="INFO")
+
+@ledger_atomic
+def link_legacy_receipt(*, actor, contribution_id, investment_id, justification):
+    """Match two existing receipt records without posting or changing any balance."""
+    require_finance_access(actor, "approve")
+    from apps.stakeholders.models import Investment
+    if not justification.strip():
+        raise ValidationError("Justifiez le rapprochement du versement historique.")
+    contribution = FundContribution.objects.select_for_update().get(pk=contribution_id)
+    investment = Investment.objects.select_for_update().get(pk=investment_id)
+    if (contribution.stakeholder_id, contribution.currency_id, contribution.amount, contribution.received_on) != (
+            investment.stakeholder_id, investment.currency_id, investment.amount, investment.invested_on):
+        raise ValidationError("La partie, la devise, le montant et la date doivent correspondre exactement.")
+    if contribution.legacy_investment_id == investment.pk:
+        return contribution
+    if contribution.legacy_investment_id or FundContribution.objects.filter(legacy_investment=investment).exists():
+        raise ValidationError("Un de ces versements est déjà rapproché.")
+    contribution.legacy_investment = investment
+    contribution.save(update_fields=["legacy_investment"])
+    audit_record(actor=actor, action="CONTRIBUTION_RECONCILE", instance=contribution,
+        after={"investment_id": investment.pk, "justification": justification.strip()})
+    return contribution
