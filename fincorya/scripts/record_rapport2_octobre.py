@@ -1,8 +1,8 @@
 """Enregistre le « Rapport 2 / Octobre 2026 » (FINCORYA_Rapport_2_Octobre_2026.xlsx) dans le système.
 
 Contenu importé, dans une seule transaction (tout ou rien) :
-  1. 6 fonds déclarés -> apps.stakeholders.Investment (modèle historique ; le moteur
-     Finance/FundContribution est inactif en production, FINANCE_LEDGER_ENABLED=False).
+  1. Les 6 fonds déclarés sont conservés dans l'ImportRow comme situation de fonds,
+     identique au rapport 1. Ils ne constituent pas six nouveaux investissements.
   2. 2 charges « Abonnement mensuel du système » (9 $ + 24 $) -> Expense, approuvées.
   3. 30 transactions agents (Victoria/Dav/Christ/Grâce) -> Operation, via
      create_sent_transfer / create_withdrawal, avec réapprovisionnement automatique
@@ -25,8 +25,8 @@ Hypothèses explicites (documentées, pas des faits vérifiés) :
   - Les 30+3 opérations n'ont aucune date/heure précise dans le fichier source : elles
     sont réparties dans l'ordre sur la période du 1 au 11 octobre 2026 (décision
     opérateur), pas la date réelle de chaque transaction.
-  - Les 6 fonds déclarés sont datés du 1er octobre 2026 (début de la période de
-    reprise), faute de date précise dans le rapport.
+  - Les dates de versement des fonds déclarés ne sont pas connues : aucun nouvel
+    investissement n'est créé à partir de cette situation cumulée.
   - Les soldes négatifs de début de semaine mentionnés par le rapport pour Dav (-41 $)
     et Fantiny (-314 $) ne sont PAS enregistrés dans le système (un solde de caisse
     négatif y est interdit) : ils sont seulement documentés en note dans l'ImportRow,
@@ -58,11 +58,11 @@ from apps.expenses.models import Expense  # noqa: E402
 from apps.expenses.services import decide_expense  # noqa: E402
 from apps.finance.funds import open_agent_cash  # noqa: E402
 from apps.finance.locking import ledger_atomic  # noqa: E402
-from apps.finance.models import ImportRow  # noqa: E402
+from apps.finance.models import FinancialPeriod, ImportRow  # noqa: E402
 from apps.operations.models import Operation, OperationType  # noqa: E402
 from apps.operations.services import create_sent_transfer, create_withdrawal  # noqa: E402
 from apps.pricing.models import Currency  # noqa: E402
-from apps.stakeholders.models import Investment, Stakeholder  # noqa: E402
+from apps.stakeholders.models import Stakeholder  # noqa: E402
 
 SOURCE_KEY = "RAPPORT-2-OCTOBRE-2026"
 PERIOD_START, PERIOD_END = date(2026, 10, 1), date(2026, 10, 11)
@@ -176,6 +176,15 @@ def run():
         return
 
     admin = User.objects.get(email__iexact=ADMIN_EMAIL, role=Role.ADMIN, is_active=True)
+    months = FinancialPeriod.objects.filter(period_type="MONTH", start_date__lte=date(2026, 10, 31),
+                                            end_date__gte=PERIOD_START)
+    if months.exclude(start_date=PERIOD_START, end_date=date(2026, 10, 31)).exists():
+        raise RuntimeError("Une période mensuelle chevauche octobre ; rapprocher avant import.")
+    if FinancialPeriod.objects.filter(status="LOCKED", start_date__lte=date(2026, 10, 31),
+                                      end_date__gte=PERIOD_START).exists():
+        raise RuntimeError("Une période chevauchante est verrouillée ; import refusé.")
+    FinancialPeriod.objects.get_or_create(period_type="MONTH", start_date=PERIOD_START,
+                                          end_date=date(2026, 10, 31))
     usd = Currency.objects.get(code="USD")
     agents = {code: User.objects.get(email__iexact=email, role=Role.AGENT, is_active=True)
               for code, email in AGENT_EMAILS.items()}
@@ -186,15 +195,14 @@ def run():
                "unrecorded_negative_opening": {k: str(v) for k, v in UNRECORDED_NEGATIVE_OPENING.items()},
                "note": "Avance/dette potentielle à clarifier séparément ; aucun impact sur une caisse."}
 
-    # 1) Fonds déclarés -> Investment (modèle historique, moteur Finance inactif).
+    # 1) Situation cumulée déjà présente dans le rapport 1, pas un versement.
     print("=== 1/5 Fonds déclarés ===")
-    investments = []
+    report["declared_funds"] = []
     for label, amount, key in FUNDS_DECLARED:
         stakeholder = stakeholders[key]
-        inv = Investment.objects.create(stakeholder=stakeholder, amount=amount, currency=usd,
-                                         invested_on=PERIOD_START)
-        investments.append(inv.pk)
-        print(f"  {label:<10} {amount:>8} USD -> Investment #{inv.pk} ({stakeholder.name})")
+        report["declared_funds"].append({"stakeholder_id": stakeholder.pk, "name": stakeholder.name,
+                                         "amount": str(amount), "currency": "USD"})
+        print(f"  {label:<10} {amount:>8} USD : situation déclarée, aucun nouveau versement.")
     assert sum(a for _, a, _ in FUNDS_DECLARED) == Decimal("18960.00")
 
     # 2) Charges de la semaine.
@@ -322,10 +330,10 @@ def run():
           f"théorique={go_travel_closure.expected_balance:>8} écart={go_travel_closure.variance:>8} "
           f"statut={go_travel_closure.status}")
 
-    report["investments"] = investments
+    report["investments"] = []
     report["closures"] = closures
     row = ImportRow.objects.create(source_key=SOURCE_KEY, payload=report, reviewed_by=admin,
-                                    resolution="Rapport 2 octobre 2026 importé : fonds, charges, 33 opérations, "
+                                    resolution="Rapport 2 octobre 2026 importé : situation des fonds, charges, 32 opérations, "
                                                "GO TRAVEL et clôture de semaine. Écarts de clôture, s'il y en a, "
                                                "restent en revue (REVIEW) et nécessitent une validation séparée.")
     print(f"\nImportRow #{row.pk} créé. Toute caisse en statut REVIEW ci-dessus nécessite "
