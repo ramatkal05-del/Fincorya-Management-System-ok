@@ -7,9 +7,11 @@ Contenu importé, dans une seule transaction (tout ou rien) :
   3. 30 transactions agents (Victoria/Dav/Christ/Grâce) -> Operation, via
      create_sent_transfer / create_withdrawal, avec réapprovisionnement automatique
      de la caisse si un retrait dépasserait le solde courant.
-  4. 3 transactions GO TRAVEL -> Operation sur une caisse créée pour Fantiny
-     (compte PARTNER existant, id 10) ; exécutées par l'administrateur car Fantiny
-     n'a pas le rôle AGENT.
+  4. 3 transactions GO TRAVEL -> Operation sur une caisse créée pour un nouveau
+     compte AGENT dédié (gotravel.fantiny@fincorya.local). Le moteur Finance actif
+     exige qu'une caisse (AGENT_CASH) appartienne à un utilisateur role=AGENT ;
+     la fiche PARTNER existante de Fantiny (apports/capital, id 10) n'est donc
+     pas réutilisable comme titulaire de caisse et reste inchangée.
   5. Clôture de la semaine (close_cash_day) pour les 5 caisses (4 agents + Fantiny)
      avec le cash compté déclaré en fin de rapport. Toute caisse où le compté diffère
      du solde théorique passe en REVIEW (verrouillée) : c'est le comportement normal
@@ -50,10 +52,11 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from apps.accounts.models import User, Role  # noqa: E402
-from apps.cash.models import CashAccount, GlobalCashAccount  # noqa: E402
+from apps.cash.models import CashAccount  # noqa: E402
 from apps.cash.services import allocate_cash, close_cash_day  # noqa: E402
 from apps.expenses.models import Expense  # noqa: E402
 from apps.expenses.services import decide_expense  # noqa: E402
+from apps.finance.funds import open_agent_cash  # noqa: E402
 from apps.finance.locking import ledger_atomic  # noqa: E402
 from apps.finance.models import ImportRow  # noqa: E402
 from apps.operations.models import Operation, OperationType  # noqa: E402
@@ -70,7 +73,9 @@ AGENT_EMAILS = {
     "CHRIS": "christkapia1@gmail.com",
     "GRACE": "tubadigrace6@gmail.com",
 }
-FANTINY_EMAIL = "fantiny2016@gmail.com"
+FANTINY_PARTNER_EMAIL = "fantiny2016@gmail.com"  # fiche PARTNER existante (apports/capital), inchangée.
+GO_TRAVEL_AGENT_EMAIL = "gotravel.fantiny@fincorya.local"  # nouveau compte AGENT dédié, requis par le
+GO_TRAVEL_AGENT_NAME = ("GO TRAVEL", "Fantiny")            # moteur Finance (une caisse exige role=AGENT).
 ADMIN_EMAIL = "fincoryagroup@gmail.com"
 
 STAKEHOLDER_NAMES = {
@@ -174,7 +179,6 @@ def run():
     usd = Currency.objects.get(code="USD")
     agents = {code: User.objects.get(email__iexact=email, role=Role.AGENT, is_active=True)
               for code, email in AGENT_EMAILS.items()}
-    fantiny_user = User.objects.get(email__iexact=FANTINY_EMAIL, role=Role.PARTNER, is_active=True)
     stakeholders = {code: Stakeholder.objects.get(name=name) for code, name in STAKEHOLDER_NAMES.items()}
 
     report = {"source": "FINCORYA_Rapport_2_Octobre_2026.xlsx", "period": [str(PERIOD_START), str(PERIOD_END)],
@@ -246,31 +250,47 @@ def run():
     assert retraits == Decimal("3741.00")  # 4741 du rapport moins les 1000 de l'opération #7 exclue.
     assert commissions == Decimal("343.00")
 
-    # 4) GO TRAVEL — caisse Fantiny, exécutée par l'admin.
-    print("=== 4/5 GO TRAVEL (Fantiny) ===")
-    global_account = GlobalCashAccount.objects.select_for_update().get(currency=usd)
-    fantiny_account, created = CashAccount.objects.get_or_create(
-        agent=fantiny_user, currency=usd,
-        defaults={"global_account": global_account, "is_active": True,
-                  "allocated_by": admin, "allocated_at": datetime.now(dt_timezone.utc)})
-    if not created:
-        raise RuntimeError("Une caisse existe déjà pour Fantiny ; import déjà effectué ou conflit à examiner.")
-    print(f"  Caisse GO TRAVEL créée : CashAccount #{fantiny_account.pk} (agent=Fantiny, exécutant=admin)")
+    # 4) GO TRAVEL — nouveau compte AGENT dédié (le moteur Finance exige role=AGENT
+    #    pour toute caisse ; le compte PARTNER existant de Fantiny reste inchangé,
+    #    c'est une identité distincte pour le volet opérationnel de GO TRAVEL).
+    print("=== 4/5 GO TRAVEL ===")
+    go_travel_agent, agent_created = User.objects.get_or_create(
+        email=GO_TRAVEL_AGENT_EMAIL,
+        defaults={"first_name": GO_TRAVEL_AGENT_NAME[0], "last_name": GO_TRAVEL_AGENT_NAME[1],
+                  "role": Role.AGENT, "is_active": True})
+    if agent_created:
+        go_travel_agent.set_unusable_password()
+        go_travel_agent.save(update_fields=["password"])
+        print(f"  Compte AGENT créé : {go_travel_agent.email} (#{go_travel_agent.pk}) — "
+              f"sans mot de passe utilisable ; usage interne/admin uniquement pour l'instant.")
+    else:
+        print(f"  Compte AGENT existant réutilisé : {go_travel_agent.email} (#{go_travel_agent.pk}).")
+
+    financial_account = open_agent_cash(actor=admin, agent=go_travel_agent, currency=usd)
+    go_travel_account = CashAccount.objects.select_for_update().get(agent=go_travel_agent, currency=usd)
+    if go_travel_account.balance or go_travel_account.movements.exists():
+        raise RuntimeError("La caisse GO TRAVEL a déjà un historique ; import déjà effectué ou conflit à examiner.")
+    if not go_travel_account.is_active:
+        go_travel_account.is_active = True
+        go_travel_account.allocated_by = admin
+        go_travel_account.allocated_at = datetime.now(dt_timezone.utc)
+        go_travel_account.save(update_fields=["is_active", "allocated_by", "allocated_at"])
+    print(f"  Caisse GO TRAVEL #{go_travel_account.pk} liée au grand livre (FinancialAccount #{financial_account.pk}).")
 
     created_go_travel = []
     for i, tx in enumerate(GO_TRAVEL_TRANSACTIONS):
         service = NETWORK_TO_SERVICE[tx["network"]]
         idempotency_key = f"{SOURCE_KEY}-GOTRAVEL-{i + 1}"
         op_time = _spread_timestamp(i, len(GO_TRAVEL_TRANSACTIONS))
-        op = create_sent_transfer(agent=admin, account_id=fantiny_account.pk, amount=tx["amount"],
+        op = create_sent_transfer(agent=go_travel_agent, account_id=go_travel_account.pk, amount=tx["amount"],
                                    tariff_schedule=None, manual_fee=tx["fee"], fee_mode="ADDED", service=service,
                                    customer_identifier=tx["city"], customer_name=tx["compte"],
-                                   note=f"Rapport 2 octobre, GO TRAVEL #{i + 1} — compte {tx['compte']}",
+                                   note=f"Rapport 2 octobre, GO TRAVEL #{i + 1} — compte {tx['compte']} (Fantiny)",
                                    idempotency_key=idempotency_key)
         Operation.objects.filter(pk=op.pk).update(created_at=op_time)
         created_go_travel.append(op)
-        fantiny_account.refresh_from_db()
-        print(f"  GO TRAVEL #{i + 1} {tx['amount']:>6} USD comm {tx['fee']:>4} USD -> solde={fantiny_account.balance}")
+        go_travel_account.refresh_from_db()
+        print(f"  GO TRAVEL #{i + 1} {tx['amount']:>6} USD comm {tx['fee']:>4} USD -> solde={go_travel_account.balance}")
 
     go_travel_envois = sum(op.amount for op in created_go_travel)
     go_travel_commissions = sum(op.fee for op in created_go_travel)
@@ -292,15 +312,15 @@ def run():
         print(f"  {code:<9} compté={declared:>8} théorique={closure.expected_balance:>8} "
               f"écart={closure.variance:>8} statut={closure.status}")
 
-    fantiny_closure = close_cash_day(account_id=fantiny_account.pk, business_date=PERIOD_END,
-                                      declared_cash=DECLARED_CASH_END["FANTINY"], closed_by=admin,
-                                      justification="Rapport 2 octobre 2026 : cash GO TRAVEL compté déclaré par Jenovic Mpoto.")
-    closures["FANTINY"] = {"account_id": fantiny_account.pk, "declared": str(DECLARED_CASH_END["FANTINY"]),
-                            "expected": str(fantiny_closure.expected_balance), "variance": str(fantiny_closure.variance),
-                            "status": fantiny_closure.status}
+    go_travel_closure = close_cash_day(account_id=go_travel_account.pk, business_date=PERIOD_END,
+                                        declared_cash=DECLARED_CASH_END["FANTINY"], closed_by=admin,
+                                        justification="Rapport 2 octobre 2026 : cash GO TRAVEL compté déclaré par Jenovic Mpoto.")
+    closures["FANTINY"] = {"account_id": go_travel_account.pk, "declared": str(DECLARED_CASH_END["FANTINY"]),
+                            "expected": str(go_travel_closure.expected_balance), "variance": str(go_travel_closure.variance),
+                            "status": go_travel_closure.status}
     print(f"  {'FANTINY':<9} compté={DECLARED_CASH_END['FANTINY']:>8} "
-          f"théorique={fantiny_closure.expected_balance:>8} écart={fantiny_closure.variance:>8} "
-          f"statut={fantiny_closure.status}")
+          f"théorique={go_travel_closure.expected_balance:>8} écart={go_travel_closure.variance:>8} "
+          f"statut={go_travel_closure.status}")
 
     report["investments"] = investments
     report["closures"] = closures
