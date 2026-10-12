@@ -9,11 +9,14 @@ from django.utils import timezone
 
 from apps.accounts.models import AccountActivationToken, Role, User
 from apps.accounts.services import consume_activation_token, get_valid_activation_token, issue_activation_token
+from apps.cash.models import CashAccount
 from apps.expenses.models import Expense, ExpenseCategory, ExpenseStatus
 from apps.expenses.services import decide_expense
 from apps.notifications.models import Notification, NotificationDelivery, NotificationSettings
 from apps.notifications.senders import send_salary_paid, send_weekly_agent_reminder
 from apps.notifications.services import notify
+from apps.operations.models import Operation, OperationType
+from apps.operations.services import _notify_operation
 from apps.pricing.models import Currency
 from apps.notifications import background as inline_background
 
@@ -242,3 +245,34 @@ class SalaryNotificationTests(TestCase):
         # Calling it twice for the same payment must not duplicate the confirmation.
         send_salary_paid(payment=payment)
         self.assertEqual(Notification.objects.filter(recipient=self.agent, category="SALARY_PAID").count(), 1)
+
+
+@override_settings(MFA_ENABLED=False, LOCAL_AUTH_BYPASS=False,
+                   PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class OperationAlertTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(email="op-admin@notif.test", role=Role.ADMIN)
+        self.agent = User.objects.create_user(email="op-agent@notif.test", role=Role.AGENT)
+        self.usd = Currency.objects.create(code="USD")
+        account = CashAccount.objects.create(agent=self.agent, currency=self.usd)
+        self.operation = Operation.objects.create(
+            type=OperationType.SENT_TRANSFER, agent=self.agent, account=account, currency=self.usd,
+            amount=Decimal("100.00"), fee=Decimal("5.00"), fee_auto=Decimal("5.00"),
+            rate_to_usd=Decimal("1"), amount_usd=Decimal("100.00"), fee_usd=Decimal("5.00"),
+        )
+
+    def test_operation_alerts_are_off_by_default(self):
+        _notify_operation(self.operation, self.agent, "Transfert envoyé enregistré")
+        self.assertFalse(Notification.objects.filter(category="OPERATION_ALERT").exists())
+
+    def test_enabling_the_category_notifies_agent_and_admins(self):
+        NotificationSettings.objects.update_or_create(pk=1, defaults={"enable_operation_notifications": True})
+        _notify_operation(self.operation, self.agent, "Transfert envoyé enregistré")
+        alerts = Notification.objects.filter(category="OPERATION_ALERT")
+        self.assertEqual(alerts.count(), 2)
+        self.assertEqual({n.recipient for n in alerts}, {self.agent, self.admin})
+
+    def test_disabling_the_category_again_silences_alerts(self):
+        NotificationSettings.objects.update_or_create(pk=1, defaults={"enable_operation_notifications": False})
+        _notify_operation(self.operation, self.agent, "Opération annulée")
+        self.assertFalse(Notification.objects.filter(category="OPERATION_ALERT").exists())

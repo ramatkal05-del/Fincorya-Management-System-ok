@@ -165,12 +165,16 @@ def _attach_partner(operation, stakeholder):
 
 
 def _notify_operation(operation, actor, action):
+    from apps.notifications.models import NotificationCategory, NotificationSettings
+    if not NotificationSettings.load().enable_operation_notifications:
+        return
     recipients = {actor}
     from apps.accounts.models import User
     recipients.update(User.objects.filter(role=Role.ADMIN, is_active=True))
     level = "WARNING" if operation.amount_usd >= Decimal("1000.00") else "INFO"
     for recipient in recipients:
-        notify(recipient=recipient, subject=action, body=f"{operation.reference} · {operation.amount} {operation.currency.code}", level=level)
+        notify(recipient=recipient, category=NotificationCategory.OPERATION_ALERT,
+               subject=action, body=f"{operation.reference} · {operation.amount} {operation.currency.code}", level=level)
 
 
 def _claim_request(actor, key, action):

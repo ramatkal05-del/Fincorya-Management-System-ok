@@ -63,7 +63,7 @@ class NotificationSettingsAdmin(admin.ModelAdmin):
             "enable_weekly_agent_reminder", "enable_weekly_stakeholder_invite",
             "enable_salary_notifications", "enable_dividend_notifications",
             "enable_investor_notifications", "enable_partner_notifications",
-            "enable_welcome_email",
+            "enable_welcome_email", "enable_operation_notifications",
         )}),
     )
     readonly_fields = ("updated_by", "updated_at")

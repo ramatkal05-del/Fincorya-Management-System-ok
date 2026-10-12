@@ -16,6 +16,7 @@ class NotificationCategory(models.TextChoices):
     PARTNER_SHARE_PAID = "PARTNER_SHARE_PAID", _("Part partenaire payée")
     WELCOME = "WELCOME", _("Bienvenue / activation de compte")
     TEST = "TEST", _("Envoi de test administrateur")
+    OPERATION_ALERT = "OPERATION_ALERT", _("Alerte opération agent (création/annulation/correction)")
 
 
 class Notification(models.Model):
@@ -83,6 +84,8 @@ class NotificationSettings(models.Model):
     enable_investor_notifications = models.BooleanField(default=True, verbose_name=_("Notifications paiements investisseurs"))
     enable_partner_notifications = models.BooleanField(default=True, verbose_name=_("Notifications parts partenaires"))
     enable_welcome_email = models.BooleanField(default=True, verbose_name=_("E-mail de bienvenue à la création de compte"))
+    enable_operation_notifications = models.BooleanField(
+        default=False, verbose_name=_("Alertes opération agent (création, annulation, correction)"))
 
     updated_by = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
