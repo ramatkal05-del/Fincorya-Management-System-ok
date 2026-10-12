@@ -39,10 +39,8 @@ ACCOUNTS = {
 }
 
 JUSTIFICATION = (
-    "Validation croisée Rapport 1 (OCTOBRE 1.xlsx) et Rapport 2 "
-    "(FINCORYA_Rapport_2_Octobre_2026.xlsx) de Jenovic Mpoto : l'écart correspond à des "
-    "remises/réapprovisionnements de trésorerie survenus dans la semaine mais non détaillés "
-    "dans la liste des transactions des deux rapports. Le cash compté déclaré fait foi."
+    "Écart validé selon Rapports 1 et 2 (Jenovic Mpoto) : remises/réapprovisionnements "
+    "non détaillés dans les transactions listées. Cash compté déclaré fait foi."
 )
 
 
